@@ -10,13 +10,14 @@ using System.Threading.Tasks;
 
 namespace SocketSignalServer
 {
-    public class DebugFilePathWorker
+    public class DebugFilePathWorker : IDisposable
     {
         private Task worker;
-        private bool _WorkerRun = true;
-        public int IntervalSec = 1;
+        private CancellationTokenSource tokenSource;
 
         private string _outDirPath = "";
+        public int IntervalSec = 1;
+
         public string outDirPath
         {
             get { return _outDirPath; }
@@ -26,19 +27,27 @@ namespace SocketSignalServer
             }
         }
 
-       
-
         public DebugFilePathWorker(string outDirPath)
         {
+            tokenSource = new CancellationTokenSource();
             Start(outDirPath);
         }
 
-        private void Worker()
+        public void Dispose()
         {
-            while (_WorkerRun)
+            if (tokenSource != null)
+            {
+                tokenSource.Cancel();
+                tokenSource.Dispose();
+            }
+        }
+
+        private void Worker(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
             {
                 DebugOutFilenameReset(outDirPath);
-                Thread.Sleep(IntervalSec * 1000);
+                Task.Delay(TimeSpan.FromSeconds(IntervalSec), token).Wait();
             }
         }
 
@@ -46,17 +55,18 @@ namespace SocketSignalServer
         {
             this.outDirPath = outDirPath;
 
-            if (!_WorkerRun || worker == null || worker.IsCompleted)
+            if (worker == null || worker.IsCompleted)
             {
-                _WorkerRun = true;
-                worker = Task.Run(() => Worker());
+                var token = tokenSource.Token;
+                worker = Task.Run(() => { try { Worker(token); } catch { } }, token);
             }
         }
 
         public void Stop()
         {
-            _WorkerRun = false;
-            Task.WaitAll(new Task[] { worker });
+            tokenSource.Cancel();
+            Thread.Sleep(100);
+            worker.Wait();
         }
 
         private void DebugOutFilenameReset(string targetDir)

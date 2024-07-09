@@ -21,7 +21,7 @@ namespace SocketSignalServer
         /// <summary>
         /// 
         /// </summary>
-        /// <param name="Line">clientName + "\t" + timeoutCheck + "\t" + timeoutLength + "\t" + timeoutMessage</param>
+        /// <param name="Line">string clientName + "\t" + bool timeoutCheck + "\t" + int timeoutLength + "\t" + string timeoutMessage</param>
         /// <param name="addressList"></param>
         public ClientData(string Line, List<AddressInfo> addressList)
         {
