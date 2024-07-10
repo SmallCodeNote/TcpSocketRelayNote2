@@ -54,7 +54,6 @@
     <Compile Include="FailoverActiveView.Designer.cs">
       <DependentUpon>FailoverActiveView.cs</DependentUpon>
     </Compile>
-    <Compile Include="FailoverWorker.cs" />
     <Compile Include="FluentSchedulerRegistry.cs" />
     <Compile Include="Form1.cs">
       <SubType>Form</SubType>
@@ -109,7 +108,7 @@
       <Version>5.5.1</Version>
     </PackageReference>
     <PackageReference Include="LiteDB">
-      <Version>5.0.20</Version>
+      <Version>5.0.21</Version>
     </PackageReference>
   </ItemGroup>
   <ItemGroup>

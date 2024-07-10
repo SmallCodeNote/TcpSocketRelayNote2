@@ -66,6 +66,8 @@ namespace SocketSignalServer
             UpdateStart_toolStripStatusLabel1(tokenSource.Token);
             UpdateStart_StatusList(tokenSource.Token);
             UpdateStart_panel_FailoverSystemView(tokenSource.Token);
+
+            checkBox_voiceOffSwitch_CheckedChanged(null, null);
         }
 
         private bool WorkersDirectoryCheckAndCreate()
@@ -85,7 +87,6 @@ namespace SocketSignalServer
         private DebugFilePathWorker debugFilePathWorker;
         private TimeoutCheckWorker timeoutCheckWorker;
         private SocketListeningAndStoreWorker socketListeningAndStoreWorker;
-        private FailoverWorker failoverWorker;
         private CancellationTokenSource tokenSource;
 
         private AddressBook addressBook;
@@ -243,24 +244,24 @@ namespace SocketSignalServer
             Update_StatusStrip(primaryAlive);
         }
 
-        private void Update_StatusStrip(bool activeAlive)
+        private void Update_StatusStrip(bool primaryAlive)
         {
-            if (this.InvokeRequired) { this.Invoke((Action)(() => Update_StatusStrip(activeAlive))); }
+            if (this.InvokeRequired) { this.Invoke((Action)(() => Update_StatusStrip(primaryAlive))); }
             else
             {
-                if (activeAlive)
+                if (primaryAlive)
                 {
-                    toolStripStatusLabel2.Text = "StandbyMode(ActiveAlive)";
+                    toolStripStatusLabel2.Text = "StandbyMode(PrimaryAlive)";
                     toolStripDropDownButton_Class.Image = Properties.Resources.Standby048;
                 }
-                else if (!activeAlive && panel_FailoverSystemView.Controls.Count > 0)
+                else if (!primaryAlive && panel_FailoverSystemView.Controls.Count > 0)
                 {
-                    toolStripStatusLabel2.Text = "ActiveMode(ActiveDown)";
+                    toolStripStatusLabel2.Text = "PrimaryMode(PrimaryDown)";
                     toolStripDropDownButton_Class.Image = Properties.Resources.Active048;
                 }
                 else
                 {
-                    toolStripStatusLabel2.Text = "ActiveMode";
+                    toolStripStatusLabel2.Text = "PrimaryMode";
                     toolStripDropDownButton_Class.Image = Properties.Resources.Active048;
                 }
             }

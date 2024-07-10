@@ -45,7 +45,6 @@ namespace SocketSignalServer
         public string TimeoutMessageParameter = "";
         public bool IsBusy = false;
 
-
         private LiteDB_Worker liteDB_Worker;
         private TcpSocketServer tcpSrv;
         private CancellationTokenSource tokenSource;

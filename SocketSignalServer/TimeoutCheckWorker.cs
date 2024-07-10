@@ -18,6 +18,7 @@ namespace SocketSignalServer
 
             this.clientList = clientList;
             this.TimeoutMessageParameter = TimeoutMessageParameter;
+            tokenSource = new CancellationTokenSource();
         }
 
         public void Dispose()
@@ -39,7 +40,7 @@ namespace SocketSignalServer
         private CancellationTokenSource tokenSource;
 
         public bool IsBusy = false;
-        public int Interval = 1000;
+        public int Interval = 10000;
         public string TimeoutMessageParameter = "";
 
         private string _dbFilename;
@@ -56,12 +57,12 @@ namespace SocketSignalServer
         {
             while (!token.IsCancellationRequested)
             {
-                if (File.Exists(dbFilename))
+                if (true)
                 {
                     SocketMessage[] dataset0;
                     SocketMessage[] dataset1;
 
-                    Debug.WriteLine("OpenLiteDB\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name);
+                    //Debug.WriteLine("OpenLiteDB\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name);
 
                     var col = liteDB_Worker.LoadData();
 
@@ -96,6 +97,9 @@ namespace SocketSignalServer
                             timeoutMessage.parameter = TimeoutMessageParameter;
                             noticeTransmitter.AddNotice(clientTarget, timeoutMessage);
                             clientTarget.lastTimeoutDetectedTime = DateTime.Now;
+
+                            Debug.WriteLine("Timeout\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name +" "+ timeoutMessage.ToString());
+                            
                         }
                     }
                 }
@@ -109,7 +113,8 @@ namespace SocketSignalServer
         {
             if (worker == null)
             {
-                worker = Task.Run(() => Worker(tokenSource.Token));
+                var token = tokenSource.Token;
+                worker = Task.Run(() => Worker(token),token);
                 IsBusy = true;
                 return true;
             }
