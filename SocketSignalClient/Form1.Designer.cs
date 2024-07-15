@@ -46,11 +46,13 @@
             this.label4 = new System.Windows.Forms.Label();
             this.tabControl1 = new System.Windows.Forms.TabControl();
             this.tabPage_Body = new System.Windows.Forms.TabPage();
-            this.tabPage_Responce = new System.Windows.Forms.TabPage();
-            this.textBox_Responce = new System.Windows.Forms.TextBox();
+            this.tabPage_History = new System.Windows.Forms.TabPage();
+            this.textBox_queueHistory = new System.Windows.Forms.TextBox();
+            this.button_ClearHistory = new System.Windows.Forms.Button();
+            this.textBox_queueHistorySize = new System.Windows.Forms.TextBox();
             this.tabControl1.SuspendLayout();
             this.tabPage_Body.SuspendLayout();
-            this.tabPage_Responce.SuspendLayout();
+            this.tabPage_History.SuspendLayout();
             this.SuspendLayout();
             // 
             // button1
@@ -191,7 +193,7 @@
             this.textBox_statusXML.Multiline = true;
             this.textBox_statusXML.Name = "textBox_statusXML";
             this.textBox_statusXML.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-            this.textBox_statusXML.Size = new System.Drawing.Size(611, 339);
+            this.textBox_statusXML.Size = new System.Drawing.Size(572, 322);
             this.textBox_statusXML.TabIndex = 2;
             this.textBox_statusXML.WordWrap = false;
             // 
@@ -207,8 +209,8 @@
             // tabControl1
             // 
             this.tabControl1.Controls.Add(this.tabPage_Body);
-            this.tabControl1.Controls.Add(this.tabPage_Responce);
-            this.tabControl1.Location = new System.Drawing.Point(12, 218);
+            this.tabControl1.Controls.Add(this.tabPage_History);
+            this.tabControl1.Location = new System.Drawing.Point(14, 240);
             this.tabControl1.Name = "tabControl1";
             this.tabControl1.SelectedIndex = 0;
             this.tabControl1.Size = new System.Drawing.Size(586, 354);
@@ -220,38 +222,59 @@
             this.tabPage_Body.Location = new System.Drawing.Point(4, 22);
             this.tabPage_Body.Name = "tabPage_Body";
             this.tabPage_Body.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage_Body.Size = new System.Drawing.Size(617, 345);
+            this.tabPage_Body.Size = new System.Drawing.Size(578, 328);
             this.tabPage_Body.TabIndex = 0;
             this.tabPage_Body.Text = "Body";
             this.tabPage_Body.UseVisualStyleBackColor = true;
             // 
-            // tabPage_Responce
+            // tabPage_History
             // 
-            this.tabPage_Responce.Controls.Add(this.textBox_Responce);
-            this.tabPage_Responce.Location = new System.Drawing.Point(4, 22);
-            this.tabPage_Responce.Name = "tabPage_Responce";
-            this.tabPage_Responce.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage_Responce.Size = new System.Drawing.Size(578, 328);
-            this.tabPage_Responce.TabIndex = 1;
-            this.tabPage_Responce.Text = "Responce";
-            this.tabPage_Responce.UseVisualStyleBackColor = true;
+            this.tabPage_History.Controls.Add(this.textBox_queueHistory);
+            this.tabPage_History.Location = new System.Drawing.Point(4, 22);
+            this.tabPage_History.Name = "tabPage_History";
+            this.tabPage_History.Padding = new System.Windows.Forms.Padding(3);
+            this.tabPage_History.Size = new System.Drawing.Size(578, 328);
+            this.tabPage_History.TabIndex = 1;
+            this.tabPage_History.Text = "History";
+            this.tabPage_History.UseVisualStyleBackColor = true;
             // 
-            // textBox_Responce
+            // textBox_queueHistory
             // 
-            this.textBox_Responce.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.textBox_Responce.Location = new System.Drawing.Point(3, 3);
-            this.textBox_Responce.Multiline = true;
-            this.textBox_Responce.Name = "textBox_Responce";
-            this.textBox_Responce.ScrollBars = System.Windows.Forms.ScrollBars.Both;
-            this.textBox_Responce.Size = new System.Drawing.Size(572, 322);
-            this.textBox_Responce.TabIndex = 3;
-            this.textBox_Responce.WordWrap = false;
+            this.textBox_queueHistory.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.textBox_queueHistory.Location = new System.Drawing.Point(3, 3);
+            this.textBox_queueHistory.MaxLength = 262136;
+            this.textBox_queueHistory.Multiline = true;
+            this.textBox_queueHistory.Name = "textBox_queueHistory";
+            this.textBox_queueHistory.ScrollBars = System.Windows.Forms.ScrollBars.Both;
+            this.textBox_queueHistory.Size = new System.Drawing.Size(572, 322);
+            this.textBox_queueHistory.TabIndex = 3;
+            this.textBox_queueHistory.WordWrap = false;
+            // 
+            // button_ClearHistory
+            // 
+            this.button_ClearHistory.Location = new System.Drawing.Point(476, 218);
+            this.button_ClearHistory.Name = "button_ClearHistory";
+            this.button_ClearHistory.Size = new System.Drawing.Size(117, 22);
+            this.button_ClearHistory.TabIndex = 6;
+            this.button_ClearHistory.Text = "ClearHistory";
+            this.button_ClearHistory.UseVisualStyleBackColor = true;
+            this.button_ClearHistory.Click += new System.EventHandler(this.button_ClearHistory_Click);
+            // 
+            // textBox_queueHistorySize
+            // 
+            this.textBox_queueHistorySize.Location = new System.Drawing.Point(370, 220);
+            this.textBox_queueHistorySize.Name = "textBox_queueHistorySize";
+            this.textBox_queueHistorySize.Size = new System.Drawing.Size(100, 19);
+            this.textBox_queueHistorySize.TabIndex = 7;
+            this.textBox_queueHistorySize.TextChanged += new System.EventHandler(this.textBox_queueHistorySize_TextChanged);
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(612, 583);
+            this.ClientSize = new System.Drawing.Size(612, 606);
+            this.Controls.Add(this.textBox_queueHistorySize);
+            this.Controls.Add(this.button_ClearHistory);
             this.Controls.Add(this.tabControl1);
             this.Controls.Add(this.label_Message);
             this.Controls.Add(this.label4);
@@ -272,11 +295,12 @@
             this.Text = "SignalClient";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Form1_FormClosing);
             this.Load += new System.EventHandler(this.Form1_Load);
+            this.SizeChanged += new System.EventHandler(this.Form1_SizeChanged);
             this.tabControl1.ResumeLayout(false);
             this.tabPage_Body.ResumeLayout(false);
             this.tabPage_Body.PerformLayout();
-            this.tabPage_Responce.ResumeLayout(false);
-            this.tabPage_Responce.PerformLayout();
+            this.tabPage_History.ResumeLayout(false);
+            this.tabPage_History.PerformLayout();
             this.ResumeLayout(false);
             this.PerformLayout();
 
@@ -302,8 +326,10 @@
         private System.Windows.Forms.Label label4;
         private System.Windows.Forms.TabControl tabControl1;
         private System.Windows.Forms.TabPage tabPage_Body;
-        private System.Windows.Forms.TabPage tabPage_Responce;
-        private System.Windows.Forms.TextBox textBox_Responce;
+        private System.Windows.Forms.TabPage tabPage_History;
+        private System.Windows.Forms.TextBox textBox_queueHistory;
+        private System.Windows.Forms.Button button_ClearHistory;
+        private System.Windows.Forms.TextBox textBox_queueHistorySize;
     }
 }
 

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
@@ -19,9 +20,13 @@ namespace SocketSignalClient
     {
         private TcpSocketServer tcpSrv;
         private CancellationTokenSource tokenSource;
+        private ConcurrentQueue<string> queueHistory;
+        private int queueHistorySize = 1024;
+
         private Task worker;
         bool IsBusy = false;
         int WorkerWait = 100;
+
         public DateTime LastCheckTime { get; private set; }
         public string MessageLabel
         {
@@ -43,9 +48,32 @@ namespace SocketSignalClient
             }
         }
 
+        public string QueueHistoryText
+        {
+            get { return textBox_queueHistorySize.Text; }
+            set
+            {
+                if (this.InvokeRequired) { this.Invoke((Action)(() => QueueHistoryText = value)); }
+                else { textBox_queueHistory.Text = value; }
+            }
+        }
+
+        public void QueueHistoryUpdateWorker(CancellationToken token)
+        {
+            Task.Run(() =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    List<string> Lines = new List<string>(queueHistory);
+                    string historyText = String.Join("\r\n", Lines.OrderByDescending(d => d).ToArray());
+
+                    QueueHistoryText = historyText;
+                    Task.Delay(100, token).Wait();
+                }
+            });
+        }
+
         string thisExeDirPath = "";
-
-
 
         public Form1()
         {
@@ -53,6 +81,9 @@ namespace SocketSignalClient
             tokenSource = new CancellationTokenSource();
             tcpSrv = new TcpSocketServer(80, "UTF8");
             tcpSrv.Start();
+
+            queueHistory = new ConcurrentQueue<string>();
+
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -66,6 +97,15 @@ namespace SocketSignalClient
             tcpSrv.ResponceMessage = textBox_statusXML.Text;
             Start();
 
+            QueueHistoryUpdateWorker(tokenSource.Token);
+
+            tabControl1Offset = this.Height - tabControl1.Height;
+
+
+            if (int.TryParse(textBox_queueHistorySize.Text, out int b))
+            {
+                queueHistorySize = b;
+            }
         }
 
         public void Start()
@@ -100,11 +140,14 @@ namespace SocketSignalClient
             {
                 if ((tcpSrv.LastReceiveTime - LastCheckTime).TotalSeconds > 0 && tcpSrv.ReceivedSocketQueue.Count > 0)
                 {
-                    if (tcpSrv.ReceivedSocketQueue.TryDequeue(out string MessageString))
+                    while (tcpSrv.ReceivedSocketQueue.TryDequeue(out string MessageString))
                     {
-                        string[] Cols = MessageString.Replace("\r\n", "\n").Trim('\n').Split('\n')[0].Split('\t');
+                        while (queueHistory.Count > queueHistorySize) { queueHistory.TryDequeue(out string s); }
+                        queueHistory.Enqueue(MessageString.Substring(11).Replace("\r\n","\t").Replace("\t"," "));
 
-                        if (Cols.Length >1) { MessageLabel = Cols[1]; } else { MessageLabel = MessageString; }
+                        string[] Cols = MessageString.Replace("\r\n", "\n").Trim('\n').Split('\n')[0].Split('\t');
+                        if (Cols.Length > 1) { MessageLabel = Cols[1]; } else { MessageLabel = MessageString; }
+
                         TimeLabel = Cols[0];
                     }
 
@@ -120,6 +163,26 @@ namespace SocketSignalClient
             string FormContents = WinFormStringCnv.ToString(this);
             string paramFilename = Path.Combine(thisExeDirPath, "_param.txt");
             File.WriteAllText(paramFilename, FormContents);
+        }
+
+        int tabControl1Offset = 622 - 354;
+        private void Form1_SizeChanged(object sender, EventArgs e)
+        {
+            tabControl1.Height = this.Height - tabControl1Offset;
+        }
+
+        private void button_ClearHistory_Click(object sender, EventArgs e)
+        {
+            textBox_queueHistory.Text = "";
+
+        }
+
+        private void textBox_queueHistorySize_TextChanged(object sender, EventArgs e)
+        {
+            if (int.TryParse(textBox_queueHistorySize.Text, out int b))
+            {
+                queueHistorySize = b;
+            }
         }
     }
 }
