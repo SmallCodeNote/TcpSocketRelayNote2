@@ -74,6 +74,14 @@ namespace tcpServer
             }
         }
 
+        public void ReStart(int port, string encodingName = "ASCII")
+        {
+            Stop();
+            this.Port = port;
+            this.EncodingName = encodingName;
+            Start();
+        }
+
         public void ListeningMessage()
         {
             IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Any, Port);
