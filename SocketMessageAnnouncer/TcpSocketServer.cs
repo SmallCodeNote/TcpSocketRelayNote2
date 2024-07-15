@@ -17,127 +17,163 @@ namespace tcpServer
         //===================
         // Constructor
         //===================
-        public TcpSocketServer()
+        /// <param name="encodingName">ex.)"ASCII","UTF8"</param>
+        public TcpSocketServer(int port, string encodingName = "ASCII")
         {
             LastReceiveTime = DateTime.Now;
             ReceivedSocketQueue = new ConcurrentQueue<string>();
-
+            this.Port = port;
+            this.EncodingName = encodingName;
+            IsBusy = false;
         }
 
         //===================
         // Member variable
         //===================
         public DateTime LastReceiveTime;
+        public int Port { get; private set; }
 
-        /// <summary>
-        /// Received TcpSocket Queue.
-        /// </summary>
+        /// <summary>ex.)"ASCII","UTF8"</summary>
+        public string EncodingName = "ASCII";
+
+        /// <summary> Received TcpSocket Queue. </summary>
         public ConcurrentQueue<string> ReceivedSocketQueue;
-        public int _ReceivedSocketQueueMaxSize = 1024;
-        public string ResponceMessage = "";
-        public int _bufferSize = 1024;
-        
-        private Task ListeningTask;
-        private static CancellationTokenSource cts;
-        private static CancellationToken token;
-        public bool ListeningRun = false;
 
+        public int ReceivedSocketQueueMaxSize = 1024;
+        public int ReceiveBufferSize = 1024;
+        public string ResponceMessage = "";
+
+        private Task ListeningTask;
+        private static CancellationTokenSource tokenSource;
+        private static CancellationToken token;
+        public bool IsBusy { get; private set; }
+
+        private TcpListener tcpListener;
 
         //===================
         // Member function
         //===================
-        public void StartListening(int port, string encoding = "ASCII")
+        public void Start()
         {
-            cts = new CancellationTokenSource();
-            token = cts.Token;
-            ListeningTask = Task.Run(() =>
-             {
-                 Listening(port, encoding);
-
-             }, token);
+            if (ListeningTask == null || ListeningTask.IsCompleted)
+            {
+                tokenSource = new CancellationTokenSource();
+                token = tokenSource.Token;
+                ListeningTask = Task.Run(() => { ListeningMessage(); }, token);
+                IsBusy = true;
+            }
         }
 
-        public void StopListening()
+        public void Stop()
         {
-            cts.Cancel();
-            ListeningTask.Wait();
-            return;
+            if (ListeningTask != null && !ListeningTask.IsCompleted)
+            {
+                tokenSource.Cancel();
+                Thread.Sleep(100);
+                ListeningTask.Wait();
+            }
         }
 
-        public void Listening(int port, string encoding = "ASCII")
+        public void ReStart(int port, string encodingName = "ASCII")
         {
-            IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Any, port);
-            var tcpServer = new TcpListener(localEndPoint);
+            Stop();
+            this.Port = port;
+            this.EncodingName = encodingName;
+            Start();
+        }
+
+        public void ListeningMessage()
+        {
+            IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Any, Port);
+            tcpListener = new TcpListener(localEndPoint);
+            tcpListener.Start(); IsBusy = true;
 
             try
             {
-                tcpServer.Start(); ListeningRun = true;
                 while (!token.IsCancellationRequested)
                 {
-                    using (var tcpClient = tcpServer.AcceptTcpClient())
-                    {
-                        var request = Receive(tcpClient, encoding);
+                    removeOverflowQueueFromReceivedSocketQueue();
 
-                        if (ReceivedSocketQueue.Count >= _ReceivedSocketQueueMaxSize) { string b = ""; ReceivedSocketQueue.TryDequeue(out b); }
+                    using (var tcpClient = tcpListener.AcceptTcpClient())
+                    {
+                        Debug.WriteLine($"tcpListener.AcceptTcpClient()");
+                        string ReceivedMessage = getReceivedMessage(tcpClient);
                         LastReceiveTime = DateTime.Now;
-                        ReceivedSocketQueue.Enqueue(LastReceiveTime.ToString("yyyy/MM/dd HH:mm:ss.fff") + "\t" + request);
+                        ReceivedSocketQueue.Enqueue(LastReceiveTime.ToString("yyyy/MM/dd HH:mm:ss.fff") + "\t" + ReceivedMessage);
                     }
                 }
-
-                tcpServer.Stop(); ListeningRun = false;
-                cts.Dispose();
-
-                return;
             }
             catch (Exception ex)
             {
-                ListeningRun = false;
                 Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
             }
-            return;
+
+            tcpListener.Stop(); IsBusy = false;
+            tokenSource.Dispose();
         }
 
-        public string Receive(TcpClient tcpClient, string encoding = "ASCII")
+        private void removeOverflowQueueFromReceivedSocketQueue()
         {
-            byte[] buffer = new byte[_bufferSize];
-            string request = "";
+            while (ReceivedSocketQueue.Count >= ReceivedSocketQueueMaxSize)
+            {
+                string b = ""; ReceivedSocketQueue.TryDequeue(out b);
+                Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " removeOverflowQueueFromReceivedSocketQueue");
+            }
+        }
+        private string getHTTPResponceStatusAndHeader()
+        {
+            List<string> Lines = new List<string>();
+            Lines.Add("HTTP/1.1 200 OK");
+            Lines.Add("Server: TcpSocketServerClass");
+            Lines.Add("Date: " + DateTime.UtcNow.ToString("R"));
+            Lines.Add("Content-Length: " + ResponceMessage.Length);
+            Lines.Add("Content-Type: text/xml; charset=UTF-8");
+
+            string responceString = String.Join("\r\n", Lines) + "\r\n\r\n";
+
+            return responceString;
+
+        }
+
+        public string getReceivedMessage(TcpClient tcpClient)
+        {
+            byte[] buffer = new byte[ReceiveBufferSize];
+            string ReceivedMessage = "";
+
+            System.Text.Encoding Encoder = System.Text.Encoding.ASCII;
+            if (EncodingName == "UTF8") Encoder = System.Text.Encoding.UTF8;
 
             try
             {
                 using (NetworkStream stream = tcpClient.GetStream())
                 {
-                    if (encoding == "ASCII")
+                    do
                     {
-                        do
-                        {
-                            int byteSize = stream.Read(buffer, 0, buffer.Length);
-                            request += Encoding.ASCII.GetString(buffer, 0, byteSize);
-                        }
-                        while (stream.DataAvailable);
+                        int byteSize = stream.Read(buffer, 0, buffer.Length);
+                        ReceivedMessage += Encoder.GetString(buffer, 0, byteSize);
 
-                        //Responce code for client
-                        var response = "received : " + request;
-                        if (ResponceMessage.Length > 0) { response = ResponceMessage; }
-                        buffer = Encoding.ASCII.GetBytes(response);
-                        stream.Write(buffer, 0, buffer.Length);
-                        Debug.WriteLine($"Response : {response}");
-                    }
-                    else //UTF8
+                    } while (stream.DataAvailable);
+
+                    //Responce for client
+
+
+                    var response = DateTime.Now.ToString("HH:mm:ss.fff") + " received : " + ReceivedMessage;
+
+                    string[] Cols = ReceivedMessage.Replace("\r\n", "\n").Split('\n');
+
+                    if (Cols.Length > 0)
                     {
-                        do
-                        {
-                            int byteSize = stream.Read(buffer, 0, buffer.Length);
-                            request += Encoding.UTF8.GetString(buffer, 0, byteSize);
-                        }
-                        while (stream.DataAvailable);
+                        string[] ColsB = Cols[0].Split(' ');
 
-                        //Responce code for client
-                        var response = "received : " + request;
-                        if (ResponceMessage.Length > 0) { response = ResponceMessage; }
-                        buffer = Encoding.UTF8.GetBytes(response);
-                        stream.Write(buffer, 0, buffer.Length);
-                        Debug.WriteLine($"Response : {response}");
+                        if (ColsB.Length > 0 && ColsB[ColsB.Length - 1].IndexOf("HTTP") >= 0)
+                        {
+                            response = getHTTPResponceStatusAndHeader() + ResponceMessage;
+                        }
                     }
+
+                    buffer = Encoder.GetBytes(response);
+                    stream.Write(buffer, 0, buffer.Length);
+                    Debug.WriteLine($"Response : {response}");
                 }
             }
             catch (Exception ex)
@@ -145,7 +181,7 @@ namespace tcpServer
                 Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
             }
 
-            return request;
+            return ReceivedMessage;
         }
 
     }
