@@ -19,7 +19,7 @@ namespace SocketSignalServer
     public partial class Form1 : Form
     {
         private string thisExeDirPath;
-        List<ClientData> clientList;
+        List<ClientInfo> clientList;
         NoticeTransmitter noticeTransmitter;
 
         public Form1()
@@ -32,7 +32,7 @@ namespace SocketSignalServer
             noticeTransmitter = new NoticeTransmitter(checkBox_voiceOffSwitch.Checked);
             noticeTransmitter.Start();
 
-            clientList = new List<ClientData>();
+            clientList = new List<ClientInfo>();
 
             icon_voiceON = Properties.Resources.VoiceON048;
             icon_voiceOFF = Properties.Resources.VoiceOFF048;
@@ -66,6 +66,7 @@ namespace SocketSignalServer
             UpdateStart_toolStripStatusLabel1(tokenSource.Token);
             UpdateStart_StatusList(tokenSource.Token);
             UpdateStart_panel_FailoverSystemView(tokenSource.Token);
+            UpdateStart_dataGridView_AddressList(tokenSource.Token);
 
             checkBox_voiceOffSwitch_CheckedChanged(null, null);
         }
@@ -89,13 +90,15 @@ namespace SocketSignalServer
         private SocketListeningAndStoreWorker socketListeningAndStoreWorker;
         private CancellationTokenSource tokenSource;
 
-        private AddressBook addressBook;
+        private DestinationsBook addressBook;
 
         Bitmap icon_voiceON;
         Bitmap icon_voiceOFF;
 
         private void AddressListInitialize()
         {
+            ButtonEnable(button_AddressListLoad, false);
+
             List<string> addressList = new List<string>();
             for (int i = 0; i < dataGridView_AddressList.RowCount - 1; i++)
             {
@@ -105,9 +108,16 @@ namespace SocketSignalServer
 
                 if (code != "") addressList.Add(code);
             }
-            addressBook = new AddressBook(addressList.ToArray());
-            ButtonEnable(button_AddressListLoad, false);
+
+            addressBook = new DestinationsBook(addressList.ToArray());
+
+            if (int.TryParse(textBox_httpTimeout.Text, out int httpTimeout))
+            {
+                noticeTransmitter.HttpTimeout = httpTimeout;
+            }
         }
+
+
 
         private void ClientListInitialize()
         {
@@ -127,9 +137,9 @@ namespace SocketSignalServer
 
                     string code = clientName + "\t" + timeoutCheck + "\t" + timeoutLength + "\t" + timeoutMessage;
 
-                    ClientData cd = new ClientData(code, addressBook.getAddress(addressKeys));
+                    ClientInfo cd = new ClientInfo(code, addressBook.getDestinations(addressKeys));
 
-                    if (cd.clientName != "") clientList.Add(cd);
+                    if (cd.Name != "") clientList.Add(cd);
                 }
                 catch (Exception ex)
                 {
@@ -223,6 +233,48 @@ namespace SocketSignalServer
                     catch { }
                 }
             }, token);
+        }
+
+        private void UpdateStart_dataGridView_AddressList(CancellationToken token)
+        {
+            int checkInterval = 10;
+
+            Task.Run(() =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    dataGridView_AddressList_InfoUpdate();
+                    Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
+                }
+            }, token);
+        }
+
+        public void dataGridView_AddressList_InfoUpdate()
+        {
+            if (this.InvokeRequired) { this.Invoke((Action)(() => dataGridView_AddressList_InfoUpdate())); }
+            else
+            {
+                for (int i = 0; i < dataGridView_AddressList.RowCount - 1; i++)
+                {
+                    var cells = dataGridView_AddressList.Rows[i].Cells;
+                    string AddressString = cells[0].Value.ToString();
+
+                    if (noticeTransmitter.FailLogDictionary.ContainsKey(AddressString))
+                    {
+                        bool bEnable = button_AddressListLoad.Enabled;
+                        cells[2].Value = "TimeOut[" +
+                            noticeTransmitter.FailCountDictionary[AddressString].ToString() + "]: " +
+                            noticeTransmitter.FailLogDictionary[AddressString].SendNoticeTime.ToString("MM/dd HH:mm:ss");
+
+                        button_AddressListLoad.Enabled = bEnable;
+                    }
+                    else
+                    {
+                        cells[2].Value = "--";
+
+                    }
+                }
+            }
         }
 
         private void Update_panel_FailoverSystemView()
@@ -323,7 +375,6 @@ namespace SocketSignalServer
             }
         }
 
-
         public string getElapsedTimeString(TimeSpan elapsedTime)
         {
             if (elapsedTime.TotalDays >= 365) { return (elapsedTime.TotalDays / 365.2425).ToString("0") + " year"; }
@@ -336,10 +387,14 @@ namespace SocketSignalServer
             return "now";
         }
 
-
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
             tokenSource.Cancel();
+
+            for (int RowCount = 0; RowCount < dataGridView_AddressList.Rows.Count - 1; RowCount++)
+            {
+                dataGridView_AddressList.Rows[RowCount].Cells[2].Value = "--";
+            }
 
             string FormContents = WinFormStringCnv.ToString(this);
             string paramFilename = Path.Combine(thisExeDirPath, "_param.txt");
@@ -657,5 +712,27 @@ namespace SocketSignalServer
                 checkBox_voiceOffSwitch.Checked = true;
             }
         }
+
+        private void dataGridView_ClientList_CellValueChanged(object sender, DataGridViewCellEventArgs e)
+        {
+            button_ClientListLoad.Enabled = true;
+            button_ClientListLoad.BackColor = Color.GreenYellow;
+        }
+
+        private void dataGridView_AddressList_CellValueChanged(object sender, DataGridViewCellEventArgs e)
+        {
+            ButtonEnable(button_AddressListLoad, true);
+        }
+
+        private void textBox_httpTimeout_TextChanged(object sender, EventArgs e)
+        {
+            ButtonEnable(button_AddressListLoad, true);
+        }
+
+        private void dataGridView_SchedulerList_CellValueChanged(object sender, DataGridViewCellEventArgs e)
+        {
+            ButtonEnable(button_SchedulerList, true);
+        }
+
     }
 }

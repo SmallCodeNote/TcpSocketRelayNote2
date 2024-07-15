@@ -1,74 +1,72 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace SocketSignalServer
 {
-    public class ClientData
+    public class ClientInfo
     {
-        public string clientName;
-        public int timeoutLength;
-        public string timeoutMessage;
-        public List<AddressInfo> addressList;
+        public string Name;
+        public List<MessageDestinationInfo> MessageDestinationsList;
 
-        public bool timeoutCheck;
+        public bool TimeoutCheck;
+        public int TimeoutLength;
+        public string TimeoutMessage;
+        public DateTime LastAccessTime;
+        public DateTime LastTimeoutDetectedTime;
 
-        public DateTime lastAccessTime;
-        public DateTime lastTimeoutDetectedTime;
-
-        /// <summary>
-        /// 
-        /// </summary>
+        /// <summary></summary>
         /// <param name="Line">string clientName + "\t" + bool timeoutCheck + "\t" + int timeoutLength + "\t" + string timeoutMessage</param>
         /// <param name="addressList"></param>
-        public ClientData(string Line, List<AddressInfo> addressList)
+        public ClientInfo(string Line, List<MessageDestinationInfo> MessageDestinationsList)
         {
             string[] cols = Line.Split('\t');
-
             try
             {
-                clientName = cols[0];
-                timeoutCheck = bool.Parse(cols[1]);
-                timeoutLength = int.Parse(cols[2]);
-                timeoutMessage = cols[3];
-                this.addressList = addressList;
+                Name = cols[0];
+                TimeoutCheck = bool.Parse(cols[1]);
+                TimeoutLength = int.Parse(cols[2]);
+                TimeoutMessage = cols[3];
+                this.MessageDestinationsList = MessageDestinationsList;
             }
             catch
             {
-                clientName = "";
-                timeoutCheck = false;
-                timeoutLength = 0;
-                timeoutMessage = "";
-                this.addressList = null;
+                Name = "";
+                TimeoutCheck = false;
+                TimeoutLength = 0;
+                TimeoutMessage = "";
+                this.MessageDestinationsList = null;
             }
 
-            lastAccessTime = DateTime.Now;
-            lastTimeoutDetectedTime = DateTime.MinValue;
+            LastAccessTime = DateTime.Now;
+            LastTimeoutDetectedTime = DateTime.MinValue;
         }
     }
 
-    public class AddressBook
+    public class DestinationsBook
     {
-        Dictionary<string, AddressInfo> addressBook;
+        private Dictionary<string, MessageDestinationInfo> destinationsDictionary;
 
-        public AddressBook(string[] Lines)
+        /// <summary> </summary>
+        /// <param name="Lines">ex) {"192.168.1.11\tTower1","192.168.1.12\tTower2",...}</param>
+        public DestinationsBook(string[] Lines)
         {
-            addressBook = new Dictionary<string, AddressInfo>();
+            destinationsDictionary = new Dictionary<string, MessageDestinationInfo>();
             for (int i = 1; i <= Lines.Length; i++)
             {
-                addressBook.Add(i.ToString(), new AddressInfo(Lines[i - 1]));
+                destinationsDictionary.Add(i.ToString(), new MessageDestinationInfo(Lines[i - 1]));
             }
         }
 
-        public List<AddressInfo> getAddress(string keyIndexList)
+        /// <summary> </summary>
+        /// <param name="keyIndexList">ex) "1,2,3" / "ALL" </param>
+        /// <returns></returns>
+        public List<MessageDestinationInfo> getDestinations(string keyIndexList)
         {
             if (keyIndexList == "" || keyIndexList == "ALL")
             {
-                List<AddressInfo> result = new List<AddressInfo>();
+                List<MessageDestinationInfo> result = new List<MessageDestinationInfo>();
 
-                foreach (var addValue in addressBook)
+                foreach (var addValue in destinationsDictionary)
                 {
                     result.Add(addValue.Value);
                 }
@@ -77,33 +75,34 @@ namespace SocketSignalServer
             else
             {
                 string[] keyIndexSet = keyIndexList.Split(',');
-                List<AddressInfo> result = new List<AddressInfo>();
+                List<MessageDestinationInfo> result = new List<MessageDestinationInfo>();
 
                 foreach (string key in keyIndexSet)
                 {
-                    if (addressBook.ContainsKey(key)) result.Add(addressBook[key]);
+                    if (destinationsDictionary.ContainsKey(key)) result.Add(destinationsDictionary[key]);
                 }
                 return result;
             }
         }
     }
 
-    public class AddressInfo
+    public class MessageDestinationInfo
     {
-        public string address;
-        public string addressName;
+        public string Address;
+        public string Name;
 
-        public AddressInfo(string Line)
+        /// <summary> </summary>
+        /// <param name="Line">ex) "192.168.1.11\tTower1"</param>
+        public MessageDestinationInfo(string Line)
         {
             string[] cols = Line.Split('\t');
-
-            address = cols[0];
-            addressName = cols.Length > 1 ? cols[1] : "";
+            Address = cols[0];
+            Name = cols.Length > 1 ? cols[1] : "";
         }
 
         public override string ToString()
         {
-            return address + ":" + addressName;
+            return Address + ":" + Name;
         }
     }
 }

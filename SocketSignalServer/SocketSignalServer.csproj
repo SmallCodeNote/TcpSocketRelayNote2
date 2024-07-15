@@ -46,7 +46,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="ClientData.cs" />
+    <Compile Include="ClientInfo.cs" />
     <Compile Include="DebugFilePathWorker.cs" />
     <Compile Include="FailoverActiveView.cs">
       <SubType>UserControl</SubType>

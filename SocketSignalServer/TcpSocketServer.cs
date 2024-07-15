@@ -112,6 +112,20 @@ namespace tcpServer
                 Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " removeOverflowQueueFromReceivedSocketQueue");
             }
         }
+        private string getHTTPResponceStatusAndHeader()
+        {
+            List<string> Lines = new List<string>();
+            Lines.Add("HTTP/1.1 200 OK");
+            Lines.Add("Server: TcpSocketServerClass");
+            Lines.Add("Date: " + DateTime.UtcNow.ToString("R"));
+            Lines.Add("Content-Length: " + ResponceMessage.Length);
+            Lines.Add("Content-Type: text/xml; charset=UTF-8");
+
+            string responceString = String.Join("\r\n", Lines) + "\r\n\r\n";
+
+            return responceString;
+
+        }
 
         public string getReceivedMessage(TcpClient tcpClient)
         {
@@ -133,8 +147,21 @@ namespace tcpServer
                     } while (stream.DataAvailable);
 
                     //Responce for client
+
+
                     var response = DateTime.Now.ToString("HH:mm:ss.fff") + " received : " + ReceivedMessage;
-                    if (ResponceMessage.Length > 0) { response += " - " + ResponceMessage; }
+
+                    string[] Cols = ReceivedMessage.Replace("\r\n", "\n").Split('\n');
+
+                    if (Cols.Length > 0)
+                    {
+                        string[] ColsB = Cols[0].Split(' ');
+
+                        if (ColsB.Length > 0 && ColsB[ColsB.Length - 1].IndexOf("HTTP") >= 0)
+                        {
+                            response = getHTTPResponceStatusAndHeader() + ResponceMessage;
+                        }
+                    }
 
                     buffer = Encoder.GetBytes(response);
                     stream.Write(buffer, 0, buffer.Length);

@@ -11,7 +11,7 @@ namespace SocketSignalServer
 {
     public class TimeoutCheckWorker : IDisposable
     {
-        public TimeoutCheckWorker(LiteDB_Worker liteDB_Worker, NoticeTransmitter noticeTransmitter, List<ClientData> clientList, string TimeoutMessageParameter)
+        public TimeoutCheckWorker(LiteDB_Worker liteDB_Worker, NoticeTransmitter noticeTransmitter, List<ClientInfo> clientList, string TimeoutMessageParameter)
         {
             this.liteDB_Worker = liteDB_Worker;
             this.noticeTransmitter = noticeTransmitter;
@@ -33,7 +33,7 @@ namespace SocketSignalServer
         }
 
         LiteDB_Worker liteDB_Worker;
-        List<ClientData> clientList;
+        List<ClientInfo> clientList;
         NoticeTransmitter noticeTransmitter;
 
         private Task worker;
@@ -59,10 +59,7 @@ namespace SocketSignalServer
             {
                 if (true)
                 {
-                    SocketMessage[] dataset0;
-                    SocketMessage[] dataset1;
-
-                    //Debug.WriteLine("OpenLiteDB\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name);
+                    SocketMessage[] dataset0, dataset1;
 
                     var col = liteDB_Worker.LoadData();
 
@@ -76,30 +73,29 @@ namespace SocketSignalServer
                     foreach (var clientTarget in clientList)
                     {
                         //MessageRecord from Client
-                        var latestRecord = dataset0.Where(x => x.clientName == clientTarget.clientName).FirstOrDefault();
+                        var latestRecord = dataset0.Where(x => x.clientName == clientTarget.Name).FirstOrDefault();
 
                         //MessageRecord Timeout
-                        var listedTimeoutMessage = dataset1.Where(x => x.clientName == clientTarget.clientName).OrderByDescending(x => x.connectTime).ToList();
-                        if (clientTarget.lastAccessTime == null) { clientTarget.lastAccessTime = DateTime.Now; };//First Time
+                        var listedTimeoutMessage = dataset1.Where(x => x.clientName == clientTarget.Name).OrderByDescending(x => x.connectTime).ToList();
+                        if (clientTarget.LastAccessTime == null) { clientTarget.LastAccessTime = DateTime.Now; };//First Time
 
                         //Acccess Time Update
-                        if (latestRecord != null && clientTarget.lastAccessTime < latestRecord.connectTime)
+                        if (latestRecord != null && clientTarget.LastAccessTime < latestRecord.connectTime)
                         {
-                            clientTarget.lastAccessTime = latestRecord.connectTime;
+                            clientTarget.LastAccessTime = latestRecord.connectTime;
                         };
 
-                        bool flag1 = (DateTime.Now - clientTarget.lastAccessTime).TotalSeconds > clientTarget.timeoutLength;
+                        bool flag1 = (DateTime.Now - clientTarget.LastAccessTime).TotalSeconds > clientTarget.TimeoutLength;
                         bool flag2 = listedTimeoutMessage.Count == 0;
 
-                        if (clientTarget.timeoutCheck && flag1 && flag2)
+                        if (clientTarget.TimeoutCheck && flag1 && flag2)
                         {
-                            SocketMessage timeoutMessage = new SocketMessage(clientTarget.lastAccessTime, clientTarget.clientName, "Timeout", clientTarget.timeoutMessage, "", "Once");
+                            SocketMessage timeoutMessage = new SocketMessage(clientTarget.LastAccessTime, clientTarget.Name, "Timeout", clientTarget.TimeoutMessage, "", "Once");
                             timeoutMessage.parameter = TimeoutMessageParameter;
                             noticeTransmitter.AddNotice(clientTarget, timeoutMessage);
-                            clientTarget.lastTimeoutDetectedTime = DateTime.Now;
+                            clientTarget.LastTimeoutDetectedTime = DateTime.Now;
 
                             Debug.WriteLine("Timeout\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name +" "+ timeoutMessage.ToString());
-                            
                         }
                     }
                 }

@@ -76,8 +76,6 @@
             this.panel3 = new System.Windows.Forms.Panel();
             this.label6 = new System.Windows.Forms.Label();
             this.dataGridView_AddressList = new System.Windows.Forms.DataGridView();
-            this.ColumnAddress = new System.Windows.Forms.DataGridViewTextBoxColumn();
-            this.Column_AddressName = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.checkBox_voiceOffSwitch = new System.Windows.Forms.CheckBox();
             this.button_AddressListLoad = new System.Windows.Forms.Button();
             this.textBox_httpTimeout = new System.Windows.Forms.TextBox();
@@ -110,6 +108,9 @@
             this.button_getDataBaseFilePath = new System.Windows.Forms.Button();
             this.label1 = new System.Windows.Forms.Label();
             this.textBox_DataBaseFilePath = new System.Windows.Forms.TextBox();
+            this.Column_AddressList_Address = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.Column_AddressList_Name = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.Column_AddressList_Info = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.toolStripContainer1.BottomToolStripPanel.SuspendLayout();
             this.toolStripContainer1.ContentPanel.SuspendLayout();
             this.toolStripContainer1.SuspendLayout();
@@ -167,7 +168,7 @@
             this.toolStripLabel1});
             this.toolStrip_Bottom.Location = new System.Drawing.Point(3, 0);
             this.toolStrip_Bottom.Name = "toolStrip_Bottom";
-            this.toolStrip_Bottom.Size = new System.Drawing.Size(365, 25);
+            this.toolStrip_Bottom.Size = new System.Drawing.Size(334, 25);
             this.toolStrip_Bottom.TabIndex = 0;
             // 
             // toolStripDropDownButton_Class
@@ -444,6 +445,7 @@
             this.dataGridView_SchedulerList.RowTemplate.Height = 24;
             this.dataGridView_SchedulerList.Size = new System.Drawing.Size(556, 198);
             this.dataGridView_SchedulerList.TabIndex = 11;
+            this.dataGridView_SchedulerList.CellValueChanged += new System.Windows.Forms.DataGridViewCellEventHandler(this.dataGridView_SchedulerList_CellValueChanged);
             // 
             // dataGridViewTextBoxColumn1
             // 
@@ -591,8 +593,9 @@
             this.dataGridView_AddressList.ColumnHeadersDefaultCellStyle = dataGridViewCellStyle3;
             this.dataGridView_AddressList.ColumnHeadersHeightSizeMode = System.Windows.Forms.DataGridViewColumnHeadersHeightSizeMode.AutoSize;
             this.dataGridView_AddressList.Columns.AddRange(new System.Windows.Forms.DataGridViewColumn[] {
-            this.ColumnAddress,
-            this.Column_AddressName});
+            this.Column_AddressList_Address,
+            this.Column_AddressList_Name,
+            this.Column_AddressList_Info});
             dataGridViewCellStyle4.Alignment = System.Windows.Forms.DataGridViewContentAlignment.MiddleLeft;
             dataGridViewCellStyle4.BackColor = System.Drawing.SystemColors.Window;
             dataGridViewCellStyle4.Font = new System.Drawing.Font("MS UI Gothic", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(128)));
@@ -605,25 +608,16 @@
             this.dataGridView_AddressList.Margin = new System.Windows.Forms.Padding(2);
             this.dataGridView_AddressList.Name = "dataGridView_AddressList";
             this.dataGridView_AddressList.RowTemplate.Height = 24;
-            this.dataGridView_AddressList.Size = new System.Drawing.Size(404, 120);
+            this.dataGridView_AddressList.Size = new System.Drawing.Size(607, 120);
             this.dataGridView_AddressList.TabIndex = 14;
-            // 
-            // ColumnAddress
-            // 
-            this.ColumnAddress.HeaderText = "Address";
-            this.ColumnAddress.Name = "ColumnAddress";
-            // 
-            // Column_AddressName
-            // 
-            this.Column_AddressName.HeaderText = "Name";
-            this.Column_AddressName.Name = "Column_AddressName";
+            this.dataGridView_AddressList.CellValueChanged += new System.Windows.Forms.DataGridViewCellEventHandler(this.dataGridView_AddressList_CellValueChanged);
             // 
             // checkBox_voiceOffSwitch
             // 
             this.checkBox_voiceOffSwitch.AutoSize = true;
             this.checkBox_voiceOffSwitch.Checked = true;
             this.checkBox_voiceOffSwitch.CheckState = System.Windows.Forms.CheckState.Checked;
-            this.checkBox_voiceOffSwitch.Location = new System.Drawing.Point(271, 14);
+            this.checkBox_voiceOffSwitch.Location = new System.Drawing.Point(111, 15);
             this.checkBox_voiceOffSwitch.Name = "checkBox_voiceOffSwitch";
             this.checkBox_voiceOffSwitch.Size = new System.Drawing.Size(73, 16);
             this.checkBox_voiceOffSwitch.TabIndex = 28;
@@ -633,7 +627,7 @@
             // 
             // button_AddressListLoad
             // 
-            this.button_AddressListLoad.Location = new System.Drawing.Point(361, 13);
+            this.button_AddressListLoad.Location = new System.Drawing.Point(565, 11);
             this.button_AddressListLoad.Margin = new System.Windows.Forms.Padding(2);
             this.button_AddressListLoad.Name = "button_AddressListLoad";
             this.button_AddressListLoad.Size = new System.Drawing.Size(54, 18);
@@ -644,17 +638,18 @@
             // 
             // textBox_httpTimeout
             // 
-            this.textBox_httpTimeout.Location = new System.Drawing.Point(451, 33);
+            this.textBox_httpTimeout.Location = new System.Drawing.Point(298, 11);
             this.textBox_httpTimeout.Margin = new System.Windows.Forms.Padding(2);
             this.textBox_httpTimeout.Name = "textBox_httpTimeout";
-            this.textBox_httpTimeout.Size = new System.Drawing.Size(82, 19);
+            this.textBox_httpTimeout.Size = new System.Drawing.Size(66, 19);
             this.textBox_httpTimeout.TabIndex = 27;
             this.textBox_httpTimeout.TextAlign = System.Windows.Forms.HorizontalAlignment.Right;
+            this.textBox_httpTimeout.TextChanged += new System.EventHandler(this.textBox_httpTimeout_TextChanged);
             // 
             // label9
             // 
             this.label9.AutoSize = true;
-            this.label9.Location = new System.Drawing.Point(450, 18);
+            this.label9.Location = new System.Drawing.Point(196, 14);
             this.label9.Margin = new System.Windows.Forms.Padding(2, 0, 2, 0);
             this.label9.Name = "label9";
             this.label9.Size = new System.Drawing.Size(98, 12);
@@ -742,6 +737,7 @@
             this.dataGridView_ClientList.RowTemplate.Height = 24;
             this.dataGridView_ClientList.Size = new System.Drawing.Size(627, 170);
             this.dataGridView_ClientList.TabIndex = 31;
+            this.dataGridView_ClientList.CellValueChanged += new System.Windows.Forms.DataGridViewCellEventHandler(this.dataGridView_ClientList_CellValueChanged);
             // 
             // Column_ClientList_Name
             // 
@@ -951,6 +947,22 @@
             this.textBox_DataBaseFilePath.Size = new System.Drawing.Size(243, 19);
             this.textBox_DataBaseFilePath.TabIndex = 14;
             // 
+            // Column_AddressList_Address
+            // 
+            this.Column_AddressList_Address.HeaderText = "Address";
+            this.Column_AddressList_Address.Name = "Column_AddressList_Address";
+            // 
+            // Column_AddressList_Name
+            // 
+            this.Column_AddressList_Name.HeaderText = "Name";
+            this.Column_AddressList_Name.Name = "Column_AddressList_Name";
+            // 
+            // Column_AddressList_Info
+            // 
+            this.Column_AddressList_Info.HeaderText = "Info";
+            this.Column_AddressList_Info.Name = "Column_AddressList_Info";
+            this.Column_AddressList_Info.Width = 250;
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
@@ -1051,8 +1063,6 @@
         private System.Windows.Forms.Panel panel3;
         private System.Windows.Forms.Label label6;
         private System.Windows.Forms.DataGridView dataGridView_AddressList;
-        private System.Windows.Forms.DataGridViewTextBoxColumn ColumnAddress;
-        private System.Windows.Forms.DataGridViewTextBoxColumn Column_AddressName;
         private System.Windows.Forms.CheckBox checkBox_voiceOffSwitch;
         private System.Windows.Forms.Button button_AddressListLoad;
         private System.Windows.Forms.TextBox textBox_httpTimeout;
@@ -1076,6 +1086,9 @@
         private System.Windows.Forms.Panel panel_ServerSettingFrame;
         private System.Windows.Forms.Panel panel_ServerSetting;
         private System.Windows.Forms.Label label_IntervalSelectorNow;
+        private System.Windows.Forms.DataGridViewTextBoxColumn Column_AddressList_Address;
+        private System.Windows.Forms.DataGridViewTextBoxColumn Column_AddressList_Name;
+        private System.Windows.Forms.DataGridViewTextBoxColumn Column_AddressList_Info;
     }
 }
 
