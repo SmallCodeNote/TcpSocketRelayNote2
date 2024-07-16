@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using System.Text.RegularExpressions;
@@ -24,6 +25,8 @@ namespace tcpClient
         TcpSocketClient tcp;
         TcpSocketServer tcp_Reset;
 
+        private CancellationTokenSource tokenSource_ClientViewUpdate;
+        
         public Form1()
         {
             InitializeComponent();
@@ -32,6 +35,8 @@ namespace tcpClient
             tcp = new TcpSocketClient();
             tcp_Reset = new TcpSocketServer();
 
+            tokenSource_ClientViewUpdate = new CancellationTokenSource();
+            tokenSource_CommandPortListening = new CancellationTokenSource();
         }
 
         private void Form1_Load(object sender, EventArgs e)
@@ -48,18 +53,25 @@ namespace tcpClient
             {
                 if (!int.TryParse(textBox_ResetPortNumber.Text, out int portNumber))
                 {
-                    tcp_Reset.StartListening(portNumber, "UTF8");
+                    tcp_Reset.Start(portNumber, "UTF8");
                 }
-
             }
-
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
         {
+            if (tcp_Reset != null) tcp_Reset.Stop();
+
             string FormContents = WinFormStringCnv.ToString(this);
             string paramFilename = Path.Combine(thisExeDirPath, "_param.txt");
             File.WriteAllText(paramFilename, FormContents);
+
+            UpdateStop_ClientView();
+            tokenSource_ClientViewUpdate.Dispose();
+
+
+            tokenSource_CommandPortListening.Dispose();
+
         }
 
         private void button_SchedulerList_Click(object sender, EventArgs e)
@@ -87,11 +99,11 @@ namespace tcpClient
                 }
             }
 
-            foreach(var t in task)
+            foreach (var t in task)
             {
-                responce.Add(t.Result);  
+                responce.Add(t.Result);
             }
- 
+
             label_Return.Text = string.Join("/", responce.ToArray());
         }
 
@@ -102,7 +114,7 @@ namespace tcpClient
 
         public void tabPage_View_Enter(object sender = null, EventArgs e = null)
         {
-            if (sender != null) timer_ClientViewUpdate.Start();
+            if (sender != null) UpdateStart_ClientView();
 
             var allSchedules = JobManager.AllSchedules;
 
@@ -143,24 +155,64 @@ namespace tcpClient
                     jobItemView.Top = topLocation;
                     jobItemView.Left = 0;
                     jobItemView.setLabel(schedule, this);
-
                     panel_JobViewList.Controls.Add(jobItemView);
-
                     topLocation += jobItemView.Height;
-
                 }
 
                 panel_JobViewList.Height = topLocation;
-
             }
             catch (Exception ex)
             {
                 Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " EX:" + ex.ToString());
             }
-
         }
 
         int JobManager_AllSchedules_Count_Buff = 0;
+
+        Task UpdateTask_ClientView;
+        private void UpdateStart_ClientView()
+        {
+            CancellationToken token = tokenSource_ClientViewUpdate.Token;
+            int checkInterval = 1;//sec.
+
+            UpdateTask_ClientView = Task.Run(() =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        int jobCount = JobManager.AllSchedules.Count();
+                        if (JobManager_AllSchedules_Count_Buff != jobCount)
+                        {
+                            JobManager_AllSchedules_Count_Buff = jobCount;
+                            tabPage_View_Enter();
+                        }
+
+                        toolStripStatusLabel_Timer_Text = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
+                    }
+                    catch { }
+                    Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
+                }
+            }, token);
+        }
+
+        private void UpdateStop_ClientView()
+        {
+            tokenSource_ClientViewUpdate.Cancel();
+        }
+
+        private string toolStripStatusLabel_Timer_Text
+        {
+            get { return toolStripStatusLabel_Timer.Text; }
+            set
+            {
+                if (this.InvokeRequired) { this.Invoke((Action)(() => toolStripStatusLabel_Timer_Text = value)); }
+                else
+                {
+                    toolStripStatusLabel_Timer.Text = value;
+                }
+            }
+        }
 
         private void timer_ClientViewUpdate_Tick(object sender, EventArgs e)
         {
@@ -170,7 +222,6 @@ namespace tcpClient
                 JobManager_AllSchedules_Count_Buff = jobCount;
                 tabPage_View_Enter();
             }
-
             toolStripStatusLabel_Timer.Text = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
         }
 
@@ -182,18 +233,14 @@ namespace tcpClient
         private void LoadFromStore()
         {
             string[] Lines = textBox_Store.Text.Replace("\r\n", "\n").Trim('\n').Split('\n');
-
             var job = new FluentSchedulerRegistry(tcp, Lines);
-
             JobManager.RemoveAllJobs();
             JobManager.Initialize(job);
-
         }
 
         private void button_LoadFromStore_Click(object sender, EventArgs e)
         {
             LoadFromStore();
-
         }
 
         private void button_EditContentsFromClipboard_Click(object sender, EventArgs e)
@@ -205,7 +252,7 @@ namespace tcpClient
             {
                 int colIndex = 0;
                 textBox_AddressPortSetting.Text = Cols[colIndex]; colIndex++;
-                
+
                 textBox_JobName.Text = Cols[colIndex]; colIndex++;
                 comboBox_ScheduleUnit.Text = Cols[colIndex]; colIndex++;
                 textBox_ScheduleUnitParam.Text = Cols[colIndex]; colIndex++;
@@ -214,7 +261,6 @@ namespace tcpClient
                 textBox_Message.Text = Cols[colIndex]; colIndex++;
                 textBox_Parameter.Text = Cols[colIndex]; colIndex++;
                 comboBox_checkStyle.Text = Cols[colIndex];
-
             }
         }
 
@@ -231,7 +277,6 @@ namespace tcpClient
             else if (comboBox_ScheduleUnit.Text == "OnceAtHours") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Delay time value in Hours"); }
 
             textBox_ScheduleUnitParam_TextChanged();
-
         }
 
         private void button_AddOnceJobPanel_Click(object sender, EventArgs e)
@@ -268,7 +313,6 @@ namespace tcpClient
             ColList.Add(CheckStyle.ToString());
 
             return String.Join("\t", ColList.ToArray());
-
         }
 
         public string getJobStringFromEditControls()
@@ -297,12 +341,13 @@ namespace tcpClient
             ColList.Add(CheckStyle.ToString());
 
             return String.Join("\t", ColList.ToArray());
-
         }
+
         private void SchedulerInitializeFromForm()
         {
             SchedulerInitialize(getJobStringFromEditControls());
         }
+
         private void SchedulerInitializeFromArray(string[] cols, int startIndex = 0)
         {
             SchedulerInitialize(getJobStringFromArray(cols, startIndex));
@@ -322,12 +367,10 @@ namespace tcpClient
             {
                 textBox_Store.Text += string.Join("\r\n", Lines.ToArray()) + "\r\n";
             }
-
         }
 
         private void update_OnceJobPanel()
         {
-
             string[] Lines = textBox_OnceJobPanelStore.Text.Replace("\r\n", "\n").Trim('\n').Split('\n');
 
             panel_OnceJobList.Controls.Clear();
@@ -347,13 +390,11 @@ namespace tcpClient
                 }
             }
             panel_OnceJobList.Height = viewTop;
-
         }
 
         private void textBox_OnceJobPanelStore_TextChanged(object sender, EventArgs e)
         {
             update_OnceJobPanel();
-
         }
 
         private void button_StatusListFrame_Sort_Click(object sender, EventArgs e)
@@ -409,6 +450,76 @@ namespace tcpClient
         DateTime UnlockTime = DateTime.Now;
         bool ClientLocked { get { return ((TimeSpan)(UnlockTime - DateTime.Now)).TotalSeconds >= 0; } }
 
+        private CancellationTokenSource tokenSource_CommandPortListening;
+
+        private void UpdateStart_CommandPortListening()
+        {
+            CancellationToken token = tokenSource_CommandPortListening.Token;
+            int checkInterval = 1;//sec.
+
+            UpdateTask_ClientView = Task.Run(() =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        //============
+                        // New data check from Queue
+                        //============
+                        if ((tcp_Reset.LastReceiveTime - LastCheckTime).TotalSeconds > 0 && tcp_Reset.ReceivedSocketQueue.Count > 0)
+                        {
+                            List<string> queueList = new List<string>();
+
+                            string receivedSocketMessage = "";
+
+                            //============
+                            // ReadQueue and Entry dataBase file
+                            //============
+                            while (tcp_Reset.ReceivedSocketQueue.TryDequeue(out receivedSocketMessage))
+                            {
+                                string[] cols = receivedSocketMessage.Split('\t');
+
+                                int cindex = 0;
+                                string command = cols[cindex]; cindex++;
+
+                                if (command == "Reset" && cols.Length == 2)
+                                {
+                                    if (int.TryParse(cols[1], out int timeSpanMinute))
+                                    {
+                                        UnlockTime = DateTime.Now + TimeSpan.FromMinutes(timeSpanMinute);
+                                    }
+                                }
+                                else if (command == "AddJob" && cols.Length == 2)
+                                {
+                                    string Address = cols[1];
+                                    SchedulerInitializeFromArray(cols, 2);
+                                }
+                            }
+
+                            toolStripStatusLabel_TimerReset.Text = "ResetRecieved Lockuntil" + UnlockTime.ToString("HH:mm:ss");
+                        }
+                        else if (!ClientLocked)
+                        {
+                            toolStripStatusLabel_TimerReset.Text = "Client Unlock";
+                        }
+
+                        if (tcp_Reset.IsBusy)
+                        {
+                            toolStripStatusLabel_TimerReset.Text += " / ListeningRun";
+                        }
+                        else
+                        {
+                            toolStripStatusLabel_TimerReset.Text += " / ListeningStop";
+
+                        }
+                    }
+                    catch { }
+                    Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
+                }
+            }, token);
+        }
+
+
         private void timer_CommandPortListening_Tick(object sender, EventArgs e)
         {
             timer_CommandPortListening.Stop();
@@ -454,14 +565,13 @@ namespace tcpClient
                 toolStripStatusLabel_TimerReset.Text = "Client Unlock";
             }
 
-            if (tcp_Reset.ListeningRun)
+            if (tcp_Reset.IsBusy)
             {
                 toolStripStatusLabel_TimerReset.Text += " / ListeningRun";
             }
             else
             {
                 toolStripStatusLabel_TimerReset.Text += " / ListeningStop";
-
             }
 
             if (checkBox_EnableReset.Checked) { timer_CommandPortListening.Start(); }
@@ -470,6 +580,7 @@ namespace tcpClient
 
         private void checkBox_EnableReset_CheckedChanged(object sender, EventArgs e)
         {
+            /*
             if (checkBox_EnableReset.Checked)
             {
                 timer_CommandPortListening.Start();
@@ -478,7 +589,7 @@ namespace tcpClient
             {
                 timer_CommandPortListening.Stop();
             }
-
+            */
         }
 
         private void textBox_ResetPortNumber_TextChanged(object sender, EventArgs e)

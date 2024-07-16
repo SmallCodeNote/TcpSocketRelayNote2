@@ -49,9 +49,10 @@
             this.tabPage_View = new System.Windows.Forms.TabPage();
             this.tabControl_JobView = new System.Windows.Forms.TabControl();
             this.tabPage_JovView = new System.Windows.Forms.TabPage();
-            this.button_StatusListFrame_Sort = new System.Windows.Forms.Button();
+            this.panel_JobViewListFrame2 = new System.Windows.Forms.Panel();
             this.panel_JobViewListFrame = new System.Windows.Forms.Panel();
             this.panel_JobViewList = new System.Windows.Forms.Panel();
+            this.button_StatusListFrame_Sort = new System.Windows.Forms.Button();
             this.tabPage_EveryJobStore = new System.Windows.Forms.TabPage();
             this.checkBox_LoadFromStoreAuto = new System.Windows.Forms.CheckBox();
             this.textBox_Store = new System.Windows.Forms.TextBox();
@@ -59,6 +60,7 @@
             this.tabPage_Panel = new System.Windows.Forms.TabPage();
             this.tabControl_OnceJobPanel = new System.Windows.Forms.TabControl();
             this.tabPage_OnceJobPanel = new System.Windows.Forms.TabPage();
+            this.panel_OnceJobListFrame2 = new System.Windows.Forms.Panel();
             this.panel_OnceJobListFrame = new System.Windows.Forms.Panel();
             this.panel_OnceJobList = new System.Windows.Forms.Panel();
             this.tabPage_OnceJobPanel_Store = new System.Windows.Forms.TabPage();
@@ -86,17 +88,17 @@
             this.toolTip_textBox_ScheduleUnitParam = new System.Windows.Forms.ToolTip(this.components);
             this.timer_CommandPortListening = new System.Windows.Forms.Timer(this.components);
             this.toolStripContainer2 = new System.Windows.Forms.ToolStripContainer();
-            this.panel_JobViewListFrame2 = new System.Windows.Forms.Panel();
-            this.panel_OnceJobListFrame2 = new System.Windows.Forms.Panel();
             this.tabControl_Main.SuspendLayout();
             this.tabPage_View.SuspendLayout();
             this.tabControl_JobView.SuspendLayout();
             this.tabPage_JovView.SuspendLayout();
+            this.panel_JobViewListFrame2.SuspendLayout();
             this.panel_JobViewListFrame.SuspendLayout();
             this.tabPage_EveryJobStore.SuspendLayout();
             this.tabPage_Panel.SuspendLayout();
             this.tabControl_OnceJobPanel.SuspendLayout();
             this.tabPage_OnceJobPanel.SuspendLayout();
+            this.panel_OnceJobListFrame2.SuspendLayout();
             this.panel_OnceJobListFrame.SuspendLayout();
             this.tabPage_OnceJobPanel_Store.SuspendLayout();
             this.tabPage_Edit.SuspendLayout();
@@ -106,8 +108,6 @@
             this.toolStripContainer2.BottomToolStripPanel.SuspendLayout();
             this.toolStripContainer2.ContentPanel.SuspendLayout();
             this.toolStripContainer2.SuspendLayout();
-            this.panel_JobViewListFrame2.SuspendLayout();
-            this.panel_OnceJobListFrame2.SuspendLayout();
             this.SuspendLayout();
             // 
             // textBox_ClientName
@@ -277,7 +277,7 @@
             this.tabControl_Main.Margin = new System.Windows.Forms.Padding(2);
             this.tabControl_Main.Name = "tabControl_Main";
             this.tabControl_Main.SelectedIndex = 0;
-            this.tabControl_Main.Size = new System.Drawing.Size(525, 779);
+            this.tabControl_Main.Size = new System.Drawing.Size(525, 453);
             this.tabControl_Main.TabIndex = 7;
             // 
             // tabPage_View
@@ -287,7 +287,7 @@
             this.tabPage_View.Margin = new System.Windows.Forms.Padding(2);
             this.tabPage_View.Name = "tabPage_View";
             this.tabPage_View.Padding = new System.Windows.Forms.Padding(2);
-            this.tabPage_View.Size = new System.Drawing.Size(517, 753);
+            this.tabPage_View.Size = new System.Drawing.Size(517, 427);
             this.tabPage_View.TabIndex = 1;
             this.tabPage_View.Text = "JobView";
             this.tabPage_View.UseVisualStyleBackColor = true;
@@ -303,7 +303,7 @@
             this.tabControl_JobView.Location = new System.Drawing.Point(2, 2);
             this.tabControl_JobView.Name = "tabControl_JobView";
             this.tabControl_JobView.SelectedIndex = 0;
-            this.tabControl_JobView.Size = new System.Drawing.Size(513, 749);
+            this.tabControl_JobView.Size = new System.Drawing.Size(513, 423);
             this.tabControl_JobView.TabIndex = 3;
             // 
             // tabPage_JovView
@@ -312,10 +312,39 @@
             this.tabPage_JovView.Location = new System.Drawing.Point(4, 4);
             this.tabPage_JovView.Name = "tabPage_JovView";
             this.tabPage_JovView.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage_JovView.Size = new System.Drawing.Size(505, 723);
+            this.tabPage_JovView.Size = new System.Drawing.Size(505, 397);
             this.tabPage_JovView.TabIndex = 0;
             this.tabPage_JovView.Text = "View";
             this.tabPage_JovView.UseVisualStyleBackColor = true;
+            // 
+            // panel_JobViewListFrame2
+            // 
+            this.panel_JobViewListFrame2.AutoScroll = true;
+            this.panel_JobViewListFrame2.Controls.Add(this.panel_JobViewListFrame);
+            this.panel_JobViewListFrame2.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.panel_JobViewListFrame2.Location = new System.Drawing.Point(3, 3);
+            this.panel_JobViewListFrame2.Name = "panel_JobViewListFrame2";
+            this.panel_JobViewListFrame2.Size = new System.Drawing.Size(499, 391);
+            this.panel_JobViewListFrame2.TabIndex = 4;
+            // 
+            // panel_JobViewListFrame
+            // 
+            this.panel_JobViewListFrame.AutoScroll = true;
+            this.panel_JobViewListFrame.Controls.Add(this.panel_JobViewList);
+            this.panel_JobViewListFrame.Controls.Add(this.button_StatusListFrame_Sort);
+            this.panel_JobViewListFrame.Dock = System.Windows.Forms.DockStyle.Left;
+            this.panel_JobViewListFrame.Location = new System.Drawing.Point(0, 0);
+            this.panel_JobViewListFrame.Name = "panel_JobViewListFrame";
+            this.panel_JobViewListFrame.Size = new System.Drawing.Size(448, 391);
+            this.panel_JobViewListFrame.TabIndex = 1;
+            // 
+            // panel_JobViewList
+            // 
+            this.panel_JobViewList.Dock = System.Windows.Forms.DockStyle.Left;
+            this.panel_JobViewList.Location = new System.Drawing.Point(0, 0);
+            this.panel_JobViewList.Name = "panel_JobViewList";
+            this.panel_JobViewList.Size = new System.Drawing.Size(400, 391);
+            this.panel_JobViewList.TabIndex = 0;
             // 
             // button_StatusListFrame_Sort
             // 
@@ -327,25 +356,6 @@
             this.button_StatusListFrame_Sort.UseVisualStyleBackColor = true;
             this.button_StatusListFrame_Sort.Click += new System.EventHandler(this.button_StatusListFrame_Sort_Click);
             // 
-            // panel_JobViewListFrame
-            // 
-            this.panel_JobViewListFrame.AutoScroll = true;
-            this.panel_JobViewListFrame.Controls.Add(this.panel_JobViewList);
-            this.panel_JobViewListFrame.Controls.Add(this.button_StatusListFrame_Sort);
-            this.panel_JobViewListFrame.Dock = System.Windows.Forms.DockStyle.Left;
-            this.panel_JobViewListFrame.Location = new System.Drawing.Point(0, 0);
-            this.panel_JobViewListFrame.Name = "panel_JobViewListFrame";
-            this.panel_JobViewListFrame.Size = new System.Drawing.Size(448, 717);
-            this.panel_JobViewListFrame.TabIndex = 1;
-            // 
-            // panel_JobViewList
-            // 
-            this.panel_JobViewList.Dock = System.Windows.Forms.DockStyle.Left;
-            this.panel_JobViewList.Location = new System.Drawing.Point(0, 0);
-            this.panel_JobViewList.Name = "panel_JobViewList";
-            this.panel_JobViewList.Size = new System.Drawing.Size(400, 717);
-            this.panel_JobViewList.TabIndex = 0;
-            // 
             // tabPage_EveryJobStore
             // 
             this.tabPage_EveryJobStore.Controls.Add(this.checkBox_LoadFromStoreAuto);
@@ -354,7 +364,7 @@
             this.tabPage_EveryJobStore.Location = new System.Drawing.Point(4, 4);
             this.tabPage_EveryJobStore.Name = "tabPage_EveryJobStore";
             this.tabPage_EveryJobStore.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage_EveryJobStore.Size = new System.Drawing.Size(478, 330);
+            this.tabPage_EveryJobStore.Size = new System.Drawing.Size(505, 698);
             this.tabPage_EveryJobStore.TabIndex = 1;
             this.tabPage_EveryJobStore.Text = "EveryJobStore";
             this.tabPage_EveryJobStore.UseVisualStyleBackColor = true;
@@ -395,7 +405,7 @@
             this.tabPage_Panel.Location = new System.Drawing.Point(4, 22);
             this.tabPage_Panel.Name = "tabPage_Panel";
             this.tabPage_Panel.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage_Panel.Size = new System.Drawing.Size(517, 753);
+            this.tabPage_Panel.Size = new System.Drawing.Size(517, 728);
             this.tabPage_Panel.TabIndex = 3;
             this.tabPage_Panel.Text = "OnceJobPanel";
             this.tabPage_Panel.UseVisualStyleBackColor = true;
@@ -409,7 +419,7 @@
             this.tabControl_OnceJobPanel.Location = new System.Drawing.Point(3, 3);
             this.tabControl_OnceJobPanel.Name = "tabControl_OnceJobPanel";
             this.tabControl_OnceJobPanel.SelectedIndex = 0;
-            this.tabControl_OnceJobPanel.Size = new System.Drawing.Size(511, 747);
+            this.tabControl_OnceJobPanel.Size = new System.Drawing.Size(511, 722);
             this.tabControl_OnceJobPanel.TabIndex = 0;
             // 
             // tabPage_OnceJobPanel
@@ -418,10 +428,20 @@
             this.tabPage_OnceJobPanel.Location = new System.Drawing.Point(4, 4);
             this.tabPage_OnceJobPanel.Name = "tabPage_OnceJobPanel";
             this.tabPage_OnceJobPanel.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage_OnceJobPanel.Size = new System.Drawing.Size(503, 721);
+            this.tabPage_OnceJobPanel.Size = new System.Drawing.Size(503, 696);
             this.tabPage_OnceJobPanel.TabIndex = 0;
             this.tabPage_OnceJobPanel.Text = "Panels";
             this.tabPage_OnceJobPanel.UseVisualStyleBackColor = true;
+            // 
+            // panel_OnceJobListFrame2
+            // 
+            this.panel_OnceJobListFrame2.AutoScroll = true;
+            this.panel_OnceJobListFrame2.Controls.Add(this.panel_OnceJobListFrame);
+            this.panel_OnceJobListFrame2.Dock = System.Windows.Forms.DockStyle.Fill;
+            this.panel_OnceJobListFrame2.Location = new System.Drawing.Point(3, 3);
+            this.panel_OnceJobListFrame2.Name = "panel_OnceJobListFrame2";
+            this.panel_OnceJobListFrame2.Size = new System.Drawing.Size(497, 690);
+            this.panel_OnceJobListFrame2.TabIndex = 1;
             // 
             // panel_OnceJobListFrame
             // 
@@ -430,7 +450,7 @@
             this.panel_OnceJobListFrame.Dock = System.Windows.Forms.DockStyle.Left;
             this.panel_OnceJobListFrame.Location = new System.Drawing.Point(0, 0);
             this.panel_OnceJobListFrame.Name = "panel_OnceJobListFrame";
-            this.panel_OnceJobListFrame.Size = new System.Drawing.Size(441, 715);
+            this.panel_OnceJobListFrame.Size = new System.Drawing.Size(441, 690);
             this.panel_OnceJobListFrame.TabIndex = 0;
             // 
             // panel_OnceJobList
@@ -448,7 +468,7 @@
             this.tabPage_OnceJobPanel_Store.Location = new System.Drawing.Point(4, 4);
             this.tabPage_OnceJobPanel_Store.Name = "tabPage_OnceJobPanel_Store";
             this.tabPage_OnceJobPanel_Store.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage_OnceJobPanel_Store.Size = new System.Drawing.Size(488, 721);
+            this.tabPage_OnceJobPanel_Store.Size = new System.Drawing.Size(503, 721);
             this.tabPage_OnceJobPanel_Store.TabIndex = 1;
             this.tabPage_OnceJobPanel_Store.Text = "Store";
             this.tabPage_OnceJobPanel_Store.UseVisualStyleBackColor = true;
@@ -510,7 +530,7 @@
             this.tabPage_Edit.Margin = new System.Windows.Forms.Padding(2);
             this.tabPage_Edit.Name = "tabPage_Edit";
             this.tabPage_Edit.Padding = new System.Windows.Forms.Padding(2);
-            this.tabPage_Edit.Size = new System.Drawing.Size(517, 753);
+            this.tabPage_Edit.Size = new System.Drawing.Size(517, 728);
             this.tabPage_Edit.TabIndex = 0;
             this.tabPage_Edit.Text = "JobEditForm";
             this.tabPage_Edit.UseVisualStyleBackColor = true;
@@ -582,7 +602,7 @@
             this.tabPage_MessageLog.Location = new System.Drawing.Point(4, 22);
             this.tabPage_MessageLog.Name = "tabPage_MessageLog";
             this.tabPage_MessageLog.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage_MessageLog.Size = new System.Drawing.Size(517, 753);
+            this.tabPage_MessageLog.Size = new System.Drawing.Size(517, 728);
             this.tabPage_MessageLog.TabIndex = 4;
             this.tabPage_MessageLog.Text = "Log";
             this.tabPage_MessageLog.UseVisualStyleBackColor = true;
@@ -604,7 +624,7 @@
             this.tabPage_Setting.Location = new System.Drawing.Point(4, 22);
             this.tabPage_Setting.Name = "tabPage_Setting";
             this.tabPage_Setting.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage_Setting.Size = new System.Drawing.Size(517, 753);
+            this.tabPage_Setting.Size = new System.Drawing.Size(517, 728);
             this.tabPage_Setting.TabIndex = 5;
             this.tabPage_Setting.Text = "Setting";
             this.tabPage_Setting.UseVisualStyleBackColor = true;
@@ -695,39 +715,19 @@
             // toolStripContainer2.ContentPanel
             // 
             this.toolStripContainer2.ContentPanel.Controls.Add(this.tabControl_Main);
-            this.toolStripContainer2.ContentPanel.Size = new System.Drawing.Size(525, 779);
+            this.toolStripContainer2.ContentPanel.Size = new System.Drawing.Size(525, 453);
             this.toolStripContainer2.Dock = System.Windows.Forms.DockStyle.Fill;
             this.toolStripContainer2.Location = new System.Drawing.Point(0, 0);
             this.toolStripContainer2.Name = "toolStripContainer2";
-            this.toolStripContainer2.Size = new System.Drawing.Size(525, 801);
+            this.toolStripContainer2.Size = new System.Drawing.Size(525, 475);
             this.toolStripContainer2.TabIndex = 10;
             this.toolStripContainer2.Text = "toolStripContainer2";
-            // 
-            // panel_JobViewListFrame2
-            // 
-            this.panel_JobViewListFrame2.AutoScroll = true;
-            this.panel_JobViewListFrame2.Controls.Add(this.panel_JobViewListFrame);
-            this.panel_JobViewListFrame2.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.panel_JobViewListFrame2.Location = new System.Drawing.Point(3, 3);
-            this.panel_JobViewListFrame2.Name = "panel_JobViewListFrame2";
-            this.panel_JobViewListFrame2.Size = new System.Drawing.Size(499, 717);
-            this.panel_JobViewListFrame2.TabIndex = 4;
-            // 
-            // panel_OnceJobListFrame2
-            // 
-            this.panel_OnceJobListFrame2.AutoScroll = true;
-            this.panel_OnceJobListFrame2.Controls.Add(this.panel_OnceJobListFrame);
-            this.panel_OnceJobListFrame2.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.panel_OnceJobListFrame2.Location = new System.Drawing.Point(3, 3);
-            this.panel_OnceJobListFrame2.Name = "panel_OnceJobListFrame2";
-            this.panel_OnceJobListFrame2.Size = new System.Drawing.Size(497, 715);
-            this.panel_OnceJobListFrame2.TabIndex = 1;
             // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(525, 801);
+            this.ClientSize = new System.Drawing.Size(525, 475);
             this.Controls.Add(this.toolStripContainer2);
             this.Icon = ((System.Drawing.Icon)(resources.GetObject("$this.Icon")));
             this.Margin = new System.Windows.Forms.Padding(2);
@@ -739,12 +739,14 @@
             this.tabPage_View.ResumeLayout(false);
             this.tabControl_JobView.ResumeLayout(false);
             this.tabPage_JovView.ResumeLayout(false);
+            this.panel_JobViewListFrame2.ResumeLayout(false);
             this.panel_JobViewListFrame.ResumeLayout(false);
             this.tabPage_EveryJobStore.ResumeLayout(false);
             this.tabPage_EveryJobStore.PerformLayout();
             this.tabPage_Panel.ResumeLayout(false);
             this.tabControl_OnceJobPanel.ResumeLayout(false);
             this.tabPage_OnceJobPanel.ResumeLayout(false);
+            this.panel_OnceJobListFrame2.ResumeLayout(false);
             this.panel_OnceJobListFrame.ResumeLayout(false);
             this.tabPage_OnceJobPanel_Store.ResumeLayout(false);
             this.tabPage_OnceJobPanel_Store.PerformLayout();
@@ -760,8 +762,6 @@
             this.toolStripContainer2.ContentPanel.ResumeLayout(false);
             this.toolStripContainer2.ResumeLayout(false);
             this.toolStripContainer2.PerformLayout();
-            this.panel_JobViewListFrame2.ResumeLayout(false);
-            this.panel_OnceJobListFrame2.ResumeLayout(false);
             this.ResumeLayout(false);
 
         }
