@@ -25,8 +25,6 @@ namespace tcpClient
         TcpSocketClient tcp;
         TcpSocketServer tcp_Reset;
 
-        private CancellationTokenSource tokenSource_ClientViewUpdate;
-        
         public Form1()
         {
             InitializeComponent();
@@ -47,7 +45,7 @@ namespace tcpClient
                 WinFormStringCnv.setControlFromString(this, File.ReadAllText(paramFilename));
             }
 
-            if (checkBox_LoadFromStoreAuto.Checked) { LoadFromStore(); };
+            if (checkBox_LoadFromStoreAuto.Checked) { button_LoadFromStore_Click(null, null); };
 
             if (checkBox_EnableReset.Checked)
             {
@@ -56,6 +54,7 @@ namespace tcpClient
                     tcp_Reset.Start(portNumber, "UTF8");
                 }
             }
+            UpdateStart_CommandPortListening();
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
@@ -69,107 +68,14 @@ namespace tcpClient
             UpdateStop_ClientView();
             tokenSource_ClientViewUpdate.Dispose();
 
-
             tokenSource_CommandPortListening.Dispose();
-
         }
 
-        private void button_SchedulerList_Click(object sender, EventArgs e)
-        {
-            SchedulerInitializeFromForm();
-        }
 
-        private void button_SendMessage_Click(object sender, EventArgs e)
-        {
-            string sendMessage = textBox_ClientName.Text + "\t" + comboBox_Status.Text + "\t" + textBox_Message.Text + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "\t" + textBox_Parameter.Text + "\t" + comboBox_checkStyle.Text;
-
-            string[] AddresSet = textBox_AddressPortSetting.Text.Trim('/').Split('/');
-            List<string> responce = new List<string>();
-            List<Task<string>> task = new List<Task<string>>();
-
-            foreach (var AddressLine in AddresSet)
-            {
-                string[] Cols = AddressLine.Split(':');
-                if (Cols.Length > 1)
-                {
-                    string address = Cols[0];
-                    int port = int.Parse(Cols[1]);
-
-                    task.Add(tcp.StartClient(address, port, sendMessage, "UTF8"));
-                }
-            }
-
-            foreach (var t in task)
-            {
-                responce.Add(t.Result);
-            }
-
-            label_Return.Text = string.Join("/", responce.ToArray());
-        }
-
-        private void button_AddSchedule_Click(object sender, EventArgs e)
-        {
-            SchedulerInitializeFromForm();
-        }
-
-        public void tabPage_View_Enter(object sender = null, EventArgs e = null)
-        {
-            if (sender != null) UpdateStart_ClientView();
-
-            var allSchedules = JobManager.AllSchedules;
-
-            List<string> scheduleList = new List<string>();
-
-            foreach (var schedule in allSchedules)
-            {
-                List<string> Cols = new List<string>();
-
-                Cols.Add(schedule.Name);
-                Cols.Add(schedule.NextRun.Second.ToString());
-                Cols.Add(schedule.ToString());
-
-                scheduleList.Add(string.Join("\t", Cols.ToArray()));
-
-            }
-
-            updateJobViewList();
-
-        }
-
-        List<JobItemView> jobItemViews = new List<JobItemView>();
-
-        private void updateJobViewList()
-        {
-            try
-            {
-                panel_JobViewList.Controls.Clear();
-
-                List<Schedule> sortedSchedules = JobManager.AllSchedules.OrderBy(schedule => schedule.NextRun).ToList();
-                int topLocation = 0;
-
-                foreach (var schedule in sortedSchedules)
-                {
-                    List<string> Cols = new List<string>();
-
-                    var jobItemView = new JobItemView();
-                    jobItemView.Top = topLocation;
-                    jobItemView.Left = 0;
-                    jobItemView.setLabel(schedule, this);
-                    panel_JobViewList.Controls.Add(jobItemView);
-                    topLocation += jobItemView.Height;
-                }
-
-                panel_JobViewList.Height = topLocation;
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " EX:" + ex.ToString());
-            }
-        }
+        private CancellationTokenSource tokenSource_ClientViewUpdate;
 
         int JobManager_AllSchedules_Count_Buff = 0;
-
-        Task UpdateTask_ClientView;
+        private Task UpdateTask_ClientView;
         private void UpdateStart_ClientView()
         {
             CancellationToken token = tokenSource_ClientViewUpdate.Token;
@@ -201,6 +107,117 @@ namespace tcpClient
             tokenSource_ClientViewUpdate.Cancel();
         }
 
+        private bool ClientLocked = false;
+        private CancellationTokenSource tokenSource_CommandPortListening;
+        private Task UpdateTask_CommandPortListening;
+        private void UpdateStart_CommandPortListening()
+        {
+            DateTime LastCheckTime = DateTime.Now;
+            DateTime UnlockTime = DateTime.Now;
+            CancellationToken token = tokenSource_CommandPortListening.Token;
+            int checkInterval = 1;//sec.
+
+            UpdateTask_CommandPortListening = Task.Run(() =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        if (checkBox_EnableReset.Checked)
+                        {
+                            //============
+                            // New data check from Queue
+                            //============
+                            if ((tcp_Reset.LastReceiveTime - LastCheckTime).TotalSeconds > 0 && tcp_Reset.ReceivedSocketQueue.Count > 0)
+                            {
+                                List<string> queueList = new List<string>();
+
+                                string receivedSocketMessage = "";
+
+                                //============
+                                // ReadQueue 
+                                // ex.1) Reset\t5
+                                // ex.2) AddJob\tAddress
+                                //============
+                                while (tcp_Reset.ReceivedSocketQueue.TryDequeue(out receivedSocketMessage))
+                                {
+                                    string[] cols = receivedSocketMessage.Split('\t');
+
+                                    int cindex = 0;
+                                    string command = cols[cindex]; cindex++;
+
+                                    if (command == "Reset" && cols.Length == 2)
+                                    {
+                                        if (int.TryParse(cols[1], out int timeSpanMinute))
+                                        {
+                                            UnlockTime = DateTime.Now + TimeSpan.FromMinutes(timeSpanMinute);
+                                        }
+                                    }
+                                    else if (command == "AddJob" && cols.Length == 2)
+                                    {
+                                        string Address = cols[1];
+                                        SchedulerInitializeFromArray(cols, 2);
+                                    }
+                                }
+
+                                toolStripStatusLabel_TimerReset.Text = "ResetRecieved Lockuntil" + UnlockTime.ToString("HH:mm:ss");
+                            }
+                            else if (!ClientLocked)
+                            {
+                                toolStripStatusLabel_TimerReset.Text = "Client Unlock";
+                            }
+
+                            if (tcp_Reset.IsBusy)
+                            {
+                                toolStripStatusLabel_TimerReset.Text += " / ListeningRun";
+                            }
+                            else
+                            {
+                                toolStripStatusLabel_TimerReset.Text += " / ListeningStop";
+
+                            }
+                        }
+                    }
+                    catch { }
+
+                    ClientLocked = ((TimeSpan)(UnlockTime - DateTime.Now)).TotalSeconds >= 0;
+
+                    Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
+                }
+            }, token);
+        }
+
+        List<JobItemView> jobItemViews = new List<JobItemView>();
+        private void updateJobViewList()
+        {
+            try
+            {
+                panel_JobViewList.Controls.Clear();
+
+                List<Schedule> sortedSchedules = JobManager.AllSchedules.OrderBy(schedule => schedule.NextRun).ToList();
+                int topLocation = 0;
+
+                foreach (var schedule in sortedSchedules)
+                {
+                    List<string> Cols = new List<string>();
+
+                    var jobItemView = new JobItemView();
+                    jobItemView.Top = topLocation;
+                    jobItemView.Left = 0;
+                    jobItemView.setLabel(schedule, this);
+                    panel_JobViewList.Controls.Add(jobItemView);
+                    topLocation += jobItemView.Height;
+                }
+
+                panel_JobViewList.Height = topLocation;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " EX:" + ex.ToString());
+            }
+        }
+
+        
         private string toolStripStatusLabel_Timer_Text
         {
             get { return toolStripStatusLabel_Timer.Text; }
@@ -214,74 +231,9 @@ namespace tcpClient
             }
         }
 
-        private void timer_ClientViewUpdate_Tick(object sender, EventArgs e)
+        private void SchedulerInitializeFromArray(string[] cols, int startIndex = 0)
         {
-            int jobCount = JobManager.AllSchedules.Count();
-            if (JobManager_AllSchedules_Count_Buff != jobCount)
-            {
-                JobManager_AllSchedules_Count_Buff = jobCount;
-                tabPage_View_Enter();
-            }
-            toolStripStatusLabel_Timer.Text = DateTime.Now.ToString("yyyy/MM/dd HH:mm:ss");
-        }
-
-        private void tabPage_View_Leave(object sender, EventArgs e)
-        {
-            timer_ClientViewUpdate.Stop();
-        }
-
-        private void LoadFromStore()
-        {
-            string[] Lines = textBox_Store.Text.Replace("\r\n", "\n").Trim('\n').Split('\n');
-            var job = new FluentSchedulerRegistry(tcp, Lines);
-            JobManager.RemoveAllJobs();
-            JobManager.Initialize(job);
-        }
-
-        private void button_LoadFromStore_Click(object sender, EventArgs e)
-        {
-            LoadFromStore();
-        }
-
-        private void button_EditContentsFromClipboard_Click(object sender, EventArgs e)
-        {
-            string Line = Clipboard.GetText();
-            string[] Cols = Line.Split('\t');
-
-            if (Cols.Length == 10)
-            {
-                int colIndex = 0;
-                textBox_AddressPortSetting.Text = Cols[colIndex]; colIndex++;
-
-                textBox_JobName.Text = Cols[colIndex]; colIndex++;
-                comboBox_ScheduleUnit.Text = Cols[colIndex]; colIndex++;
-                textBox_ScheduleUnitParam.Text = Cols[colIndex]; colIndex++;
-                textBox_ClientName.Text = Cols[colIndex]; colIndex++;
-                comboBox_Status.Text = Cols[colIndex]; colIndex++;
-                textBox_Message.Text = Cols[colIndex]; colIndex++;
-                textBox_Parameter.Text = Cols[colIndex]; colIndex++;
-                comboBox_checkStyle.Text = Cols[colIndex];
-            }
-        }
-
-        private void comboBox_ScheduleUnit_SelectedIndexChanged(object sender, EventArgs e)
-        {
-            button_AddOnceJobPanel.Enabled = comboBox_ScheduleUnit.Text.IndexOf("Once") >= 0;
-
-            //toolTip Update
-            if (comboBox_ScheduleUnit.Text == "EveryDays") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Hour and Minute value(ex. 8:15 )"); }
-            else if (comboBox_ScheduleUnit.Text == "EveryHours") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Minute value(ex. 10)"); }
-            else if (comboBox_ScheduleUnit.Text == "EverySeconds") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Interval in Seconds"); }
-            else if (comboBox_ScheduleUnit.Text == "OnceAtSeconds") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Delay time value in Seconds"); }
-            else if (comboBox_ScheduleUnit.Text == "OnceAtMinutes") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Delay time value in Minutes"); }
-            else if (comboBox_ScheduleUnit.Text == "OnceAtHours") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Delay time value in Hours"); }
-
-            textBox_ScheduleUnitParam_TextChanged();
-        }
-
-        private void button_AddOnceJobPanel_Click(object sender, EventArgs e)
-        {
-            textBox_OnceJobPanelStore.Text += getJobStringFromEditControls() + "\r\n";
+            SchedulerInitialize(getJobStringFromArray(cols, startIndex));
         }
 
         public string getJobStringFromArray(string[] cols, int startImdex = 0)
@@ -346,11 +298,6 @@ namespace tcpClient
         private void SchedulerInitializeFromForm()
         {
             SchedulerInitialize(getJobStringFromEditControls());
-        }
-
-        private void SchedulerInitializeFromArray(string[] cols, int startIndex = 0)
-        {
-            SchedulerInitialize(getJobStringFromArray(cols, startIndex));
         }
 
         private void SchedulerInitialize(string jobString)
@@ -440,166 +387,134 @@ namespace tcpClient
                 }
                 textBox.ForeColor = Color.Black;
             }
-
             button_AddOnceJobPanel.Enabled = comboBox_ScheduleUnit.Text.IndexOf("Once") >= 0;
             button_AddSchedule.Enabled = true;
-
-        }
-
-        DateTime LastCheckTime = DateTime.Now;
-        DateTime UnlockTime = DateTime.Now;
-        bool ClientLocked { get { return ((TimeSpan)(UnlockTime - DateTime.Now)).TotalSeconds >= 0; } }
-
-        private CancellationTokenSource tokenSource_CommandPortListening;
-
-        private void UpdateStart_CommandPortListening()
-        {
-            CancellationToken token = tokenSource_CommandPortListening.Token;
-            int checkInterval = 1;//sec.
-
-            UpdateTask_ClientView = Task.Run(() =>
-            {
-                while (!token.IsCancellationRequested)
-                {
-                    try
-                    {
-                        //============
-                        // New data check from Queue
-                        //============
-                        if ((tcp_Reset.LastReceiveTime - LastCheckTime).TotalSeconds > 0 && tcp_Reset.ReceivedSocketQueue.Count > 0)
-                        {
-                            List<string> queueList = new List<string>();
-
-                            string receivedSocketMessage = "";
-
-                            //============
-                            // ReadQueue and Entry dataBase file
-                            //============
-                            while (tcp_Reset.ReceivedSocketQueue.TryDequeue(out receivedSocketMessage))
-                            {
-                                string[] cols = receivedSocketMessage.Split('\t');
-
-                                int cindex = 0;
-                                string command = cols[cindex]; cindex++;
-
-                                if (command == "Reset" && cols.Length == 2)
-                                {
-                                    if (int.TryParse(cols[1], out int timeSpanMinute))
-                                    {
-                                        UnlockTime = DateTime.Now + TimeSpan.FromMinutes(timeSpanMinute);
-                                    }
-                                }
-                                else if (command == "AddJob" && cols.Length == 2)
-                                {
-                                    string Address = cols[1];
-                                    SchedulerInitializeFromArray(cols, 2);
-                                }
-                            }
-
-                            toolStripStatusLabel_TimerReset.Text = "ResetRecieved Lockuntil" + UnlockTime.ToString("HH:mm:ss");
-                        }
-                        else if (!ClientLocked)
-                        {
-                            toolStripStatusLabel_TimerReset.Text = "Client Unlock";
-                        }
-
-                        if (tcp_Reset.IsBusy)
-                        {
-                            toolStripStatusLabel_TimerReset.Text += " / ListeningRun";
-                        }
-                        else
-                        {
-                            toolStripStatusLabel_TimerReset.Text += " / ListeningStop";
-
-                        }
-                    }
-                    catch { }
-                    Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
-                }
-            }, token);
-        }
-
-
-        private void timer_CommandPortListening_Tick(object sender, EventArgs e)
-        {
-            timer_CommandPortListening.Stop();
-
-            //============
-            // New data check from Queue
-            //============
-            if ((tcp_Reset.LastReceiveTime - LastCheckTime).TotalSeconds > 0 && tcp_Reset.ReceivedSocketQueue.Count > 0)
-            {
-                List<string> queueList = new List<string>();
-
-                string receivedSocketMessage = "";
-
-                //============
-                // ReadQueue and Entry dataBase file
-                //============
-                while (tcp_Reset.ReceivedSocketQueue.TryDequeue(out receivedSocketMessage))
-                {
-                    string[] cols = receivedSocketMessage.Split('\t');
-
-                    int cindex = 0;
-                    string command = cols[cindex]; cindex++;
-
-                    if (command == "Reset" && cols.Length == 2)
-                    {
-                        if (int.TryParse(cols[1], out int timeSpanMinute))
-                        {
-                            UnlockTime = DateTime.Now + TimeSpan.FromMinutes(timeSpanMinute);
-                        }
-                    }
-                    else if (command == "AddJob" && cols.Length == 2)
-                    {
-                        string Address = cols[1];
-                        SchedulerInitializeFromArray(cols, 2);
-                    }
-                }
-
-                toolStripStatusLabel_TimerReset.Text = "ResetRecieved Lockuntil" + UnlockTime.ToString("HH:mm:ss");
-
-            }
-            else if (!ClientLocked)
-            {
-                toolStripStatusLabel_TimerReset.Text = "Client Unlock";
-            }
-
-            if (tcp_Reset.IsBusy)
-            {
-                toolStripStatusLabel_TimerReset.Text += " / ListeningRun";
-            }
-            else
-            {
-                toolStripStatusLabel_TimerReset.Text += " / ListeningStop";
-            }
-
-            if (checkBox_EnableReset.Checked) { timer_CommandPortListening.Start(); }
-
-        }
-
-        private void checkBox_EnableReset_CheckedChanged(object sender, EventArgs e)
-        {
-            /*
-            if (checkBox_EnableReset.Checked)
-            {
-                timer_CommandPortListening.Start();
-            }
-            else
-            {
-                timer_CommandPortListening.Stop();
-            }
-            */
         }
 
         private void textBox_ResetPortNumber_TextChanged(object sender, EventArgs e)
         {
-            //int.TryParse(textBox_ResetPortNumber.Text,out )
+            if (int.TryParse(textBox_ResetPortNumber.Text, out int Port))
+            {
+
+            }
         }
 
         private void toolTip_textBox_ScheduleUnitParam_Popup(object sender, PopupEventArgs e)
         {
 
+        }
+
+        private void button_SchedulerList_Click(object sender, EventArgs e)
+        {
+            SchedulerInitializeFromForm();
+        }
+
+        private void button_SendMessage_Click(object sender, EventArgs e)
+        {
+            string sendMessage = textBox_ClientName.Text + "\t" + comboBox_Status.Text + "\t" + textBox_Message.Text + DateTime.Now.ToString("yyyyMMdd_HHmmss") + "\t" + textBox_Parameter.Text + "\t" + comboBox_checkStyle.Text;
+
+            string[] AddresSet = textBox_AddressPortSetting.Text.Trim('/').Split('/');
+            List<string> responce = new List<string>();
+            List<Task<string>> task = new List<Task<string>>();
+
+            foreach (var AddressLine in AddresSet)
+            {
+                string[] Cols = AddressLine.Split(':');
+                if (Cols.Length > 1)
+                {
+                    string address = Cols[0];
+                    int port = int.Parse(Cols[1]);
+
+                    task.Add(tcp.StartClient(address, port, sendMessage, "UTF8"));
+                }
+            }
+
+            foreach (var t in task)
+            {
+                responce.Add(t.Result);
+            }
+
+            label_Return.Text = string.Join("/", responce.ToArray());
+        }
+
+        private void button_AddSchedule_Click(object sender, EventArgs e)
+        {
+            SchedulerInitializeFromForm();
+        }
+
+        public void tabPage_View_Enter(object sender = null, EventArgs e = null)
+        {
+            if (sender != null) UpdateStart_ClientView();
+
+            var allSchedules = JobManager.AllSchedules;
+
+            List<string> scheduleList = new List<string>();
+
+            foreach (var schedule in allSchedules)
+            {
+                List<string> Cols = new List<string>();
+
+                Cols.Add(schedule.Name);
+                Cols.Add(schedule.NextRun.Second.ToString());
+                Cols.Add(schedule.ToString());
+
+                scheduleList.Add(string.Join("\t", Cols.ToArray()));
+            }
+            updateJobViewList();
+        }
+
+        private void tabPage_View_Leave(object sender, EventArgs e)
+        {
+            UpdateStop_ClientView();
+        }
+
+        private void button_LoadFromStore_Click(object sender, EventArgs e)
+        {
+            string[] Lines = textBox_Store.Text.Replace("\r\n", "\n").Trim('\n').Split('\n');
+            var job = new FluentSchedulerRegistry(tcp, Lines);
+            JobManager.RemoveAllJobs();
+            JobManager.Initialize(job);
+        }
+
+        private void button_EditContentsFromClipboard_Click(object sender, EventArgs e)
+        {
+            string Line = Clipboard.GetText();
+            string[] Cols = Line.Split('\t');
+
+            if (Cols.Length == 10)
+            {
+                int colIndex = 0;
+                textBox_AddressPortSetting.Text = Cols[colIndex]; colIndex++;
+
+                textBox_JobName.Text = Cols[colIndex]; colIndex++;
+                comboBox_ScheduleUnit.Text = Cols[colIndex]; colIndex++;
+                textBox_ScheduleUnitParam.Text = Cols[colIndex]; colIndex++;
+                textBox_ClientName.Text = Cols[colIndex]; colIndex++;
+                comboBox_Status.Text = Cols[colIndex]; colIndex++;
+                textBox_Message.Text = Cols[colIndex]; colIndex++;
+                textBox_Parameter.Text = Cols[colIndex]; colIndex++;
+                comboBox_checkStyle.Text = Cols[colIndex];
+            }
+        }
+
+        private void comboBox_ScheduleUnit_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            button_AddOnceJobPanel.Enabled = comboBox_ScheduleUnit.Text.IndexOf("Once") >= 0;
+
+            //toolTip Update
+            if (comboBox_ScheduleUnit.Text == "EveryDays") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Hour and Minute value(ex. 8:15 )"); }
+            else if (comboBox_ScheduleUnit.Text == "EveryHours") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Minute value(ex. 10)"); }
+            else if (comboBox_ScheduleUnit.Text == "EverySeconds") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Interval in Seconds"); }
+            else if (comboBox_ScheduleUnit.Text == "OnceAtSeconds") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Delay time value in Seconds"); }
+            else if (comboBox_ScheduleUnit.Text == "OnceAtMinutes") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Delay time value in Minutes"); }
+            else if (comboBox_ScheduleUnit.Text == "OnceAtHours") { toolTip_textBox_ScheduleUnitParam.SetToolTip(textBox_ScheduleUnitParam, "Delay time value in Hours"); }
+
+            textBox_ScheduleUnitParam_TextChanged();
+        }
+
+        private void button_AddOnceJobPanel_Click(object sender, EventArgs e)
+        {
+            textBox_OnceJobPanelStore.Text += getJobStringFromEditControls() + "\r\n";
         }
     }
 }
