@@ -55,7 +55,6 @@ namespace tcpServer
             tokenSource.Dispose();
         }
 
-
         //===================
         // Member function
         //===================
@@ -77,7 +76,7 @@ namespace tcpServer
         {
             if (ListeningTask != null && !ListeningTask.IsCompleted)
             {
-                tokenSource.Cancel();
+                tokenSource.Cancel();tokenSource.Dispose();tokenSource = new CancellationTokenSource();
                 if (tcpListener!=null && IsBusy) tcpListener.Stop();
                 if(ListeningTask!=null||! ListeningTask.IsCompleted) ListeningTask.Wait();
             }

@@ -486,10 +486,10 @@ namespace SocketReceiverBase
             }, token);
         }
 
-        private int timer_SendMessage_Count = 0;
-        private bool timer_SendMessage_LastJudgmentFlag = true;
-
         private Task UpdateTask_SendMessage;
+        private int UpdateParam_SendMessage_Count = 0;
+        private bool UpdateParam_SendMessage_LastJudgmentFlag = true;
+
         private void UpdateStart_SendMessage(CancellationToken token)
         {
             UpdateTask_SendMessage = Task.Run(() =>
@@ -498,20 +498,20 @@ namespace SocketReceiverBase
                 {
                     try
                     {
-                        if (timer_SendMessage_LastJudgmentFlag != JudgmentFlag && !JudgmentFlag) timer_SendMessage_Count = -1;
+                        if (UpdateParam_SendMessage_LastJudgmentFlag != JudgmentFlag && !JudgmentFlag) UpdateParam_SendMessage_Count = -1;
 
-                        if (JudgmentFlag && timer_SendMessage_Count < 0)
+                        if (JudgmentFlag && UpdateParam_SendMessage_Count < 0)
                         {
                             sendMessageOK();
-                            if (!int.TryParse(textBox_IntervalOK.Text, out timer_SendMessage_Count)) { timer_SendMessage_Count = 300; }
+                            if (!int.TryParse(textBox_IntervalOK.Text, out UpdateParam_SendMessage_Count)) { UpdateParam_SendMessage_Count = 300; }
                         }
-                        else if (!JudgmentFlag && timer_SendMessage_Count < 0)
+                        else if (!JudgmentFlag && UpdateParam_SendMessage_Count < 0)
                         {
                             sendMessageNG();
-                            if (!int.TryParse(textBox_IntervalNG.Text, out timer_SendMessage_Count)) { timer_SendMessage_Count = 10; }
+                            if (!int.TryParse(textBox_IntervalNG.Text, out UpdateParam_SendMessage_Count)) { UpdateParam_SendMessage_Count = 10; }
                         }
 
-                        timer_SendMessage_Count--;
+                        UpdateParam_SendMessage_Count--;
                     }
                     catch { }
 
