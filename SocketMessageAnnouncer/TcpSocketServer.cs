@@ -43,10 +43,9 @@ namespace tcpServer
         /// <param name="encodingName">ex.)"ASCII","UTF8"</param>
         public TcpSocketServer()
         {
+            IsBusy = false;
             LastReceiveTime = DateTime.Now;
             ReceivedSocketQueue = new ConcurrentQueue<string>();
-            IsBusy = false;
-
             tokenSource = new CancellationTokenSource();
         }
 
@@ -79,8 +78,8 @@ namespace tcpServer
             if (ListeningTask != null && !ListeningTask.IsCompleted)
             {
                 tokenSource.Cancel();
-                Thread.Sleep(100);
-                ListeningTask.Wait();
+                if (tcpListener!=null && IsBusy) tcpListener.Stop();
+                if(ListeningTask!=null||! ListeningTask.IsCompleted) ListeningTask.Wait();
             }
         }
         
