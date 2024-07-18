@@ -187,7 +187,6 @@ namespace tcpClient
             }, token);
         }
 
-        List<JobItemView> jobItemViews = new List<JobItemView>();
         private void updateJobViewList()
         {
             try
@@ -216,7 +215,6 @@ namespace tcpClient
                 Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " EX:" + ex.ToString());
             }
         }
-
         
         private string toolStripStatusLabel_Timer_Text
         {
