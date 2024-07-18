@@ -19,10 +19,10 @@ namespace SocketSignalServer
         {
             this.liteDB_Worker = liteDB_Worker;
             tokenSource = new CancellationTokenSource();
-            tcpSrv = new TcpSocketServer(Port, EncodingName);
+            tcpSrv = new TcpSocketServer();
             
             LastCheckTime = DateTime.Now;
-            tcpSrv.Start();
+            tcpSrv.Start(Port, EncodingName);
 
         }
 

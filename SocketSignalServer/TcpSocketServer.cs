@@ -12,21 +12,8 @@ using System.Diagnostics;
 
 namespace tcpServer
 {
-    class TcpSocketServer
+    class TcpSocketServer : IDisposable
     {
-        //===================
-        // Constructor
-        //===================
-        /// <param name="encodingName">ex.)"ASCII","UTF8"</param>
-        public TcpSocketServer(int port, string encodingName = "ASCII")
-        {
-            LastReceiveTime = DateTime.Now;
-            ReceivedSocketQueue = new ConcurrentQueue<string>();
-            this.Port = port;
-            this.EncodingName = encodingName;
-            IsBusy = false;
-        }
-
         //===================
         // Member variable
         //===================
@@ -44,23 +31,46 @@ namespace tcpServer
         public string ResponceMessage = "";
 
         private Task ListeningTask;
-        private static CancellationTokenSource tokenSource;
-        private static CancellationToken token;
+        private CancellationTokenSource tokenSource;
+        private CancellationToken token;
         public bool IsBusy { get; private set; }
 
         private TcpListener tcpListener;
 
         //===================
+        // Constructor
+        //===================
+        /// <param name="encodingName">ex.)"ASCII","UTF8"</param>
+        public TcpSocketServer()
+        {
+            LastReceiveTime = DateTime.Now;
+            ReceivedSocketQueue = new ConcurrentQueue<string>();
+            IsBusy = false;
+
+            tokenSource = new CancellationTokenSource();
+        }
+
+        public void Dispose()
+        {
+            Stop();
+            tokenSource.Dispose();
+        }
+
+
+        //===================
         // Member function
         //===================
-        public void Start()
+        public void Start(int port, string encodingName = "ASCII")
         {
+            Stop();
+
             if (ListeningTask == null || ListeningTask.IsCompleted)
             {
-                tokenSource = new CancellationTokenSource();
                 token = tokenSource.Token;
+                this.Port = port;
+                this.EncodingName = encodingName;
+
                 ListeningTask = Task.Run(() => { ListeningMessage(); }, token);
-                IsBusy = true;
             }
         }
 
@@ -73,15 +83,7 @@ namespace tcpServer
                 ListeningTask.Wait();
             }
         }
-
-        public void ReStart(int port, string encodingName = "ASCII")
-        {
-            Stop();
-            this.Port = port;
-            this.EncodingName = encodingName;
-            Start();
-        }
-
+        
         public void ListeningMessage()
         {
             IPEndPoint localEndPoint = new IPEndPoint(IPAddress.Any, Port);
@@ -109,7 +111,6 @@ namespace tcpServer
             }
 
             tcpListener.Stop(); IsBusy = false;
-            tokenSource.Dispose();
         }
 
         private void removeOverflowQueueFromReceivedSocketQueue()
@@ -120,6 +121,7 @@ namespace tcpServer
                 Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " removeOverflowQueueFromReceivedSocketQueue");
             }
         }
+
         private string getHTTPResponceStatusAndHeader()
         {
             List<string> Lines = new List<string>();
@@ -129,10 +131,7 @@ namespace tcpServer
             Lines.Add("Content-Length: " + ResponceMessage.Length);
             Lines.Add("Content-Type: text/xml; charset=UTF-8");
 
-            string responceString = String.Join("\r\n", Lines) + "\r\n\r\n";
-
-            return responceString;
-
+            return String.Join("\r\n", Lines) + "\r\n\r\n";
         }
 
         public string getReceivedMessage(TcpClient tcpClient)
@@ -155,8 +154,6 @@ namespace tcpServer
                     } while (stream.DataAvailable);
 
                     //Responce for client
-
-
                     var response = DateTime.Now.ToString("HH:mm:ss.fff") + " received : " + ReceivedMessage;
 
                     string[] Cols = ReceivedMessage.Replace("\r\n", "\n").Split('\n');
@@ -183,6 +180,5 @@ namespace tcpServer
 
             return ReceivedMessage;
         }
-
     }
 }
