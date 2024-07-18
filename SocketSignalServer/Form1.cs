@@ -71,6 +71,26 @@ namespace SocketSignalServer
             checkBox_voiceOffSwitch_CheckedChanged(null, null);
         }
 
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            tokenSource.Cancel();
+
+            for (int RowCount = 0; RowCount < dataGridView_AddressList.Rows.Count - 1; RowCount++)
+            {
+                dataGridView_AddressList.Rows[RowCount].Cells[2].Value = "--";
+            }
+
+            string FormContents = WinFormStringCnv.ToString(this);
+            string paramFilename = Path.Combine(thisExeDirPath, "_param.txt");
+            File.WriteAllText(paramFilename, FormContents);
+
+        }
+
+        private void Form1_SizeChanged(object sender, EventArgs e)
+        {
+            toolStripLabel1.Text = this.Size.ToString();
+        }
+
         private bool WorkersDirectoryCheckAndCreate()
         {
             if (!Directory.Exists(Path.GetDirectoryName(textBox_DataBaseFilePath.Text))) { Directory.CreateDirectory(Path.GetDirectoryName(textBox_DataBaseFilePath.Text)); }
@@ -218,9 +238,11 @@ namespace SocketSignalServer
                 tabPage_Status.Select();
             }
         }
+
+        Task UpdateTask_panel_FailoverSystemView;
         private void UpdateStart_panel_FailoverSystemView(CancellationToken token)
         {
-            Task.Run(() =>
+            UpdateTask_panel_FailoverSystemView = Task.Run(() =>
             {
                 while (!token.IsCancellationRequested)
                 {
@@ -235,18 +257,19 @@ namespace SocketSignalServer
             }, token);
         }
 
+        Task UpdateTask_dataGridView_AddressList;
         private void UpdateStart_dataGridView_AddressList(CancellationToken token)
         {
             int checkInterval = 10;
 
-            Task.Run(() =>
-            {
-                while (!token.IsCancellationRequested)
-                {
-                    dataGridView_AddressList_InfoUpdate();
-                    Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
-                }
-            }, token);
+            UpdateTask_dataGridView_AddressList = Task.Run(() =>
+             {
+                 while (!token.IsCancellationRequested)
+                 {
+                     dataGridView_AddressList_InfoUpdate();
+                     Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
+                 }
+             }, token);
         }
 
         public void dataGridView_AddressList_InfoUpdate()
@@ -385,25 +408,6 @@ namespace SocketSignalServer
             if (elapsedTime.TotalMinutes >= 1) { return (elapsedTime.TotalMinutes).ToString("0") + " min."; }
             if (elapsedTime.TotalSeconds >= 1) { return (elapsedTime.TotalSeconds).ToString("0") + " sec."; }
             return "now";
-        }
-
-        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
-        {
-            tokenSource.Cancel();
-
-            for (int RowCount = 0; RowCount < dataGridView_AddressList.Rows.Count - 1; RowCount++)
-            {
-                dataGridView_AddressList.Rows[RowCount].Cells[2].Value = "--";
-            }
-
-            string FormContents = WinFormStringCnv.ToString(this);
-            string paramFilename = Path.Combine(thisExeDirPath, "_param.txt");
-            File.WriteAllText(paramFilename, FormContents);
-        }
-
-        private void Form1_SizeChanged(object sender, EventArgs e)
-        {
-            toolStripLabel1.Text = this.Size.ToString();
         }
 
         private void button_CreateDammyData_Click(object sender, EventArgs e)
