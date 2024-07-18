@@ -79,8 +79,8 @@ namespace SocketSignalClient
         {
             InitializeComponent();
             tokenSource = new CancellationTokenSource();
-            tcpSrv = new TcpSocketServer(80, "UTF8");
-            tcpSrv.Start();
+            tcpSrv = new TcpSocketServer();
+            tcpSrv.Start(80, "UTF8");
 
             queueHistory = new ConcurrentQueue<string>();
 
