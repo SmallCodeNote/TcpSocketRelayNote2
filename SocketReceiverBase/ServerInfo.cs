@@ -154,7 +154,6 @@ namespace ServerInfoUserControl
             return childControl;
         }
 
-
         public void ServerInfoUpdate(int ChildIndex, string ServerName, string Address, int Port)
         {
             this.Height = 70;
@@ -163,7 +162,6 @@ namespace ServerInfoUserControl
             this.Address = Address;
             this.Port = Port;
             this.ChildIndex = ChildIndex;
-
         }
 
         public override string ToString()
@@ -175,7 +173,7 @@ namespace ServerInfoUserControl
         {
             if (Port >= 1024)
             {
-                LatestAnswer = "Connecting...";
+                //LatestAnswer = "Connecting...";
                 LatestAnswer = await tcpClt.StartClient(Address, Port, request, "UTF8");
                 if (LatestAnswer == "") { TimeOutCount++; } else { TimeOutCount = 0; }
             }

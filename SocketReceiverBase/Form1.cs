@@ -336,45 +336,6 @@ namespace SocketReceiverBase
             }
         }
 
-        private void DebugOutFilenameReset(string targetDir)
-        {
-            string outFilename = "";
-            try
-            {
-                if (targetDir == "{ExecutablePath}") { targetDir = Path.GetDirectoryName(Application.ExecutablePath); }
-                if (Directory.Exists(targetDir))
-                {
-                    outFilename = Path.Combine(targetDir, DateTime.Now.ToString("yyyy"), DateTime.Now.ToString("yyyyMM"), DateTime.Now.ToString("yyyyMMdd"), DateTime.Now.ToString("yyyyMMdd_HHmm").Substring(0, 12) + "0.txt");
-                    if (!Directory.Exists(Path.GetDirectoryName(outFilename))) { Directory.CreateDirectory(Path.GetDirectoryName(outFilename)); };
-
-                    DefaultTraceListener dtl = (DefaultTraceListener)Debug.Listeners["Default"];
-                    if (dtl.LogFileName != outFilename) { dtl.LogFileName = outFilename; };
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.Write(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " filename " + outFilename);
-                Debug.WriteLine(ex.ToString());
-            }
-        }
-
-        private void DebugOutDirPathReset(string targetDir)
-        {
-            if (targetDir == "{ExecutablePath}") { targetDir = Path.GetDirectoryName(Application.ExecutablePath); }
-            if (Directory.Exists(targetDir))
-            {
-                string outFilename = Path.Combine(targetDir, DateTime.Now.ToString("yyyy"), DateTime.Now.ToString("yyyyMM"), DateTime.Now.ToString("yyyyMMdd"), DateTime.Now.ToString("yyyyMMdd_HHmm").Substring(0, 12) + "0.txt");
-                if (!Directory.Exists(Path.GetDirectoryName(outFilename))) { Directory.CreateDirectory(Path.GetDirectoryName(outFilename)); };
-
-                DefaultTraceListener dtl = (DefaultTraceListener)Debug.Listeners["Default"];
-                dtl.LogFileName = outFilename;
-            }
-            else if (textBox_DebugOutDirPath.Text.Length > 1)
-            {
-                MessageBox.Show("DebugOutDirPath Not Found.\r\n[" + textBox_DebugOutDirPath.Text + "]", "Directory Not Found.", MessageBoxButtons.OK);
-            }
-        }
-
         //ServerList Set================================
 
         private void EnableLoadServerListView()
@@ -436,10 +397,10 @@ namespace SocketReceiverBase
         //===================
         // Event
         //===================
-
+        private Task UpdateTask_LockFunctionListenerQueue;
         private void UpdateStart_LockFunctionListenerQueue(CancellationToken token)
         {
-            Task.Run(() =>
+            UpdateTask_LockFunctionListenerQueue = Task.Run(() =>
             {
                 while (!token.IsCancellationRequested)
                 {
@@ -449,9 +410,7 @@ namespace SocketReceiverBase
                         {
                             string receivedSocketMessage = "";
 
-                            //============
-                            // ReadQueue 
-                            //============
+                            // ============ ReadQueue ============
                             while (tcpSrv_LockFunctionListener.ReceivedSocketQueue.TryDequeue(out receivedSocketMessage))
                             {
                                 Debug.WriteLine(receivedSocketMessage);
@@ -475,7 +434,6 @@ namespace SocketReceiverBase
                             }
                             LastCheckTime = DateTime.Now;
                         }
-
                         LockStatusUpdate();
                     }
                     catch { }
@@ -485,11 +443,9 @@ namespace SocketReceiverBase
             }, token);
         }
 
-        Task UpdateTask_LockFunctionListenerQueueUpdate;
+        private Task UpdateTask_LockFunctionListenerQueueUpdate;
         private void UpdateStart_LockFunctionListenerQueueUpdate(CancellationToken token)
         {
-            int checkInterval = 10;
-
             UpdateTask_LockFunctionListenerQueueUpdate = Task.Run(() =>
             {
                 while (!token.IsCancellationRequested)
@@ -498,9 +454,7 @@ namespace SocketReceiverBase
                     {
                         string receivedSocketMessage = "";
 
-                        //============
-                        // ReadQueue 
-                        //============
+                        // ============ ReadQueue ============
                         while (tcpSrv_LockFunctionListener.ReceivedSocketQueue.TryDequeue(out receivedSocketMessage))
                         {
                             Debug.WriteLine(receivedSocketMessage);
@@ -527,16 +481,15 @@ namespace SocketReceiverBase
                     }
 
                     LockStatusUpdate();
-                    Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
+                    Task.Delay(TimeSpan.FromSeconds(UpdateInterval), token).Wait();
                 }
             }, token);
         }
 
+        private int timer_SendMessage_Count = 0;
+        private bool timer_SendMessage_LastJudgmentFlag = true;
 
-        int timer_SendMessage_Count = 0;
-        bool timer_SendMessage_LastJudgmentFlag = true;
-
-        Task UpdateTask_SendMessage;
+        private Task UpdateTask_SendMessage;
         private void UpdateStart_SendMessage(CancellationToken token)
         {
             UpdateTask_SendMessage = Task.Run(() =>
@@ -563,6 +516,35 @@ namespace SocketReceiverBase
                     catch { }
 
                     Task.Delay(TimeSpan.FromSeconds(UpdateInterval), token).Wait();
+                }
+            }, token);
+        }
+
+        private Task UpdateTask_FileCheck;
+        private void UpdateStart_FileCheck(CancellationToken token)
+        {
+            int checkInterval = 10;
+
+            UpdateTask_FileCheck = Task.Run(() =>
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    foreach (var ctrl in SourceInfoView.Controls)
+                    {
+                        if (ctrl is SourceInfo)
+                        {
+                            SourceInfo sourceInfo = (SourceInfo)ctrl;
+                            string[] FilePaths = PathSearch.NewerFilesFromDateDirectory(sourceInfo.SaveDirPath, sourceInfo.LastCheckTime, searchPattern: "*.csv");
+
+                            if (FilePaths.Length > 0)
+                            {
+                                Array.Sort(FilePaths);
+                                sourceInfo.LastCheckTime = PathSearch.GetCreateTimeFromFilePath(FilePaths[FilePaths.Length - 1]);
+                            }
+                        }
+                    }
+
+                    Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
                 }
             }, token);
         }
@@ -626,39 +608,9 @@ namespace SocketReceiverBase
             ButtonEnable(button_LoadSourceListView, false);
         }
 
-
-        Task UpdateTask_FileCheck;
-        private void UpdateStart_FileCheck(CancellationToken token)
-        {
-            int checkInterval = 10;
-
-            UpdateTask_FileCheck = Task.Run(() =>
-            {
-                while (!token.IsCancellationRequested)
-                {
-                    foreach (var ctrl in SourceInfoView.Controls)
-                    {
-                        if (ctrl is SourceInfo)
-                        {
-                            SourceInfo sourceInfo = (SourceInfo)ctrl;
-                            string[] FilePaths = PathSearch.NewerFilesFromDateDirectory(sourceInfo.SaveDirPath, sourceInfo.LastCheckTime, searchPattern: "*.csv");
-
-                            if (FilePaths.Length > 0)
-                            {
-                                Array.Sort(FilePaths);
-                                sourceInfo.LastCheckTime = PathSearch.GetCreateTimeFromFilePath(FilePaths[FilePaths.Length - 1]);
-                            }
-                        }
-                    }
-
-                    Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
-                }
-            }, token);
-        }
-        
         private void button_DebugOutDirPathReset_Click(object sender, EventArgs e)
         {
-            DebugOutDirPathReset(textBox_DebugOutDirPath.Text);
+            debugFilePathWorker.DebugOutFilenameReset( textBox_DebugOutDirPath.Text);
         }
 
         private void label_DebugOutDirPath_Key_Click(object sender, EventArgs e)

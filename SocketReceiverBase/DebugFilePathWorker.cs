@@ -69,7 +69,7 @@ namespace SocketSignalServer
             worker.Wait();
         }
 
-        private void DebugOutFilenameReset(string targetDir)
+        public void DebugOutFilenameReset(string targetDir)
         {
             string outFilename = "";
             try
