@@ -443,49 +443,6 @@ namespace SocketReceiverBase
             }, token);
         }
 
-        private Task UpdateTask_LockFunctionListenerQueueUpdate;
-        private void UpdateStart_LockFunctionListenerQueueUpdate(CancellationToken token)
-        {
-            UpdateTask_LockFunctionListenerQueueUpdate = Task.Run(() =>
-            {
-                while (!token.IsCancellationRequested)
-                {
-                    if ((tcpSrv_LockFunctionListener.LastReceiveTime - LastCheckTime).TotalSeconds > 0 && tcpSrv_LockFunctionListener.ReceivedSocketQueue.Count > 0)
-                    {
-                        string receivedSocketMessage = "";
-
-                        // ============ ReadQueue ============
-                        while (tcpSrv_LockFunctionListener.ReceivedSocketQueue.TryDequeue(out receivedSocketMessage))
-                        {
-                            Debug.WriteLine(receivedSocketMessage);
-                            if (receivedSocketMessage.IndexOf("Lock") >= 0)
-                            {
-                                string[] cols = receivedSocketMessage.Split('\t');
-
-                                if (cols.Length > 2 && int.TryParse(cols[2], out int Minutes))
-                                {
-                                    LockTime = DateTime.Now;
-                                    LockReleaseTime = DateTime.Now + new TimeSpan(0, Minutes, 0);
-                                }
-
-                                if (cols.Length > 3) LockSignalSourceName = cols[3];
-
-                            }
-                            else if (receivedSocketMessage.IndexOf("Release") >= 0)
-                            {
-                                LockReleaseTime = DateTime.Now;
-                            }
-                        }
-
-                        LastCheckTime = DateTime.Now;
-                    }
-
-                    LockStatusUpdate();
-                    Task.Delay(TimeSpan.FromSeconds(UpdateInterval), token).Wait();
-                }
-            }, token);
-        }
-
         private Task UpdateTask_SendMessage;
         private int UpdateParam_SendMessage_Count = 0;
         private bool UpdateParam_SendMessage_LastJudgmentFlag = true;

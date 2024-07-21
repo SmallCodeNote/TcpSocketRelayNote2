@@ -76,6 +76,7 @@
             this.button_AddServerList = new System.Windows.Forms.Button();
             this.button_LoadServerListView = new System.Windows.Forms.Button();
             this.tabPage_MessageSetting = new System.Windows.Forms.TabPage();
+            this.label17 = new System.Windows.Forms.Label();
             this.groupBox_MessageNG = new System.Windows.Forms.GroupBox();
             this.tabPage1 = new System.Windows.Forms.TabPage();
             this.button_AddSourceList = new System.Windows.Forms.Button();
@@ -98,6 +99,7 @@
             this.splitContainer1 = new System.Windows.Forms.SplitContainer();
             this.panel1_TopFrame = new System.Windows.Forms.Panel();
             this.panel1_Frame = new System.Windows.Forms.Panel();
+            this.label18 = new System.Windows.Forms.Label();
             this.groupBox_LockStatusView.SuspendLayout();
             this.statusStrip1.SuspendLayout();
             this.groupBox2.SuspendLayout();
@@ -575,6 +577,8 @@
             // 
             // tabPage_MessageSetting
             // 
+            this.tabPage_MessageSetting.Controls.Add(this.label18);
+            this.tabPage_MessageSetting.Controls.Add(this.label17);
             this.tabPage_MessageSetting.Controls.Add(this.groupBox_MessageNG);
             this.tabPage_MessageSetting.Controls.Add(this.groupBox2);
             this.tabPage_MessageSetting.Controls.Add(this.label15);
@@ -585,6 +589,15 @@
             this.tabPage_MessageSetting.TabIndex = 0;
             this.tabPage_MessageSetting.Text = "Message";
             this.tabPage_MessageSetting.UseVisualStyleBackColor = true;
+            // 
+            // label17
+            // 
+            this.label17.AutoSize = true;
+            this.label17.Location = new System.Drawing.Point(14, 354);
+            this.label17.Name = "label17";
+            this.label17.Size = new System.Drawing.Size(303, 12);
+            this.label17.TabIndex = 15;
+            this.label17.Text = "LockMessage = Lock\\t{Minutes}\\t{LockSignalSourceName}";
             // 
             // groupBox_MessageNG
             // 
@@ -847,6 +860,15 @@
             this.panel1_Frame.Size = new System.Drawing.Size(438, 85);
             this.panel1_Frame.TabIndex = 0;
             // 
+            // label18
+            // 
+            this.label18.AutoSize = true;
+            this.label18.Location = new System.Drawing.Point(14, 377);
+            this.label18.Name = "label18";
+            this.label18.Size = new System.Drawing.Size(146, 12);
+            this.label18.TabIndex = 16;
+            this.label18.Text = "ReleaseMessage = Release";
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
@@ -973,6 +995,8 @@
         private System.Windows.Forms.SplitContainer splitContainer1;
         private System.Windows.Forms.Panel panel1_TopFrame;
         private System.Windows.Forms.Panel panel1_Frame;
+        private System.Windows.Forms.Label label17;
+        private System.Windows.Forms.Label label18;
     }
 }
 
