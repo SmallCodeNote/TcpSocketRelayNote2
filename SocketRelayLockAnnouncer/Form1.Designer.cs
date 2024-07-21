@@ -28,7 +28,6 @@
         /// </summary>
         private void InitializeComponent()
         {
-            this.components = new System.ComponentModel.Container();
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             this.tabControl_Main = new System.Windows.Forms.TabControl();
             this.tabPage_ClientList = new System.Windows.Forms.TabPage();
@@ -60,7 +59,6 @@
             this.statusStrip1 = new System.Windows.Forms.StatusStrip();
             this.toolStripStatusLabel2 = new System.Windows.Forms.ToolStripStatusLabel();
             this.toolStripStatusLabel1 = new System.Windows.Forms.ToolStripStatusLabel();
-            this.timer_WebAPIcheck = new System.Windows.Forms.Timer(this.components);
             this.tabControl_Main.SuspendLayout();
             this.tabPage_ClientList.SuspendLayout();
             this.tabControl_ClientList.SuspendLayout();
@@ -385,11 +383,6 @@
             this.toolStripStatusLabel1.Size = new System.Drawing.Size(16, 17);
             this.toolStripStatusLabel1.Text = "...";
             // 
-            // timer_WebAPIcheck
-            // 
-            this.timer_WebAPIcheck.Interval = 1000;
-            this.timer_WebAPIcheck.Tick += new System.EventHandler(this.timer_WebAPIcheck_Tick);
-            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
@@ -452,7 +445,6 @@
         private System.Windows.Forms.TextBox textBox_HTTPPortNumber;
         private System.Windows.Forms.Label label5;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel1;
-        private System.Windows.Forms.Timer timer_WebAPIcheck;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel2;
         private System.Windows.Forms.TabPage tabPage_Log;
         private System.Windows.Forms.TextBox textBox_Queue;
