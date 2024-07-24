@@ -219,7 +219,7 @@ namespace SocketSignalServer
         public bool voiceOFF = true;
 
         /// <summary>[Milliseconds]</summary>
-        private int threadSleepLength = 100;
+        private int threadSleepLength = 1000;
 
         /// <summary> failover system class  true:Active / false:Standby </summary>
         public bool isActive = false;

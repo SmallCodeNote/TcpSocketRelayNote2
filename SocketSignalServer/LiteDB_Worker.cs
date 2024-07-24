@@ -40,9 +40,14 @@ namespace SocketSignalServer
         {
             tokenSource = new CancellationTokenSource();
 
-            _LiteDBconnectionString = new ConnectionString();
-            _LiteDBconnectionString.Filename = dbFilePath;
-            _LiteDBconnectionString.Connection = ConnectionType.Shared;
+            //_LiteDBconnectionString = new ConnectionString();
+            //_LiteDBconnectionString.Filename = dbFilePath;
+            //_LiteDBconnectionString.Connection = ConnectionType.Shared;
+
+            _LiteDBconnectionString = new ConnectionString(dbFilePath)
+            {
+                Connection = ConnectionType.Shared
+            };
 
             if (!Directory.Exists(BackupDirTopPath))
             {
@@ -65,6 +70,7 @@ namespace SocketSignalServer
 
             LastBackupTime = DateTime.Now - TimeSpan.FromSeconds(BackupIntervalSecond);
         }
+
         public void Dispose()
         {
             if (tokenSource != null)
@@ -112,19 +118,22 @@ namespace SocketSignalServer
         private void Worker(CancellationToken token)
         {
             int processCount = 0;
+            Stopwatch sw = new Stopwatch();
 
             while (!token.IsCancellationRequested)
             {
+                sw.Reset(); sw.Start();
+
+                //QueueLoad
                 if (!saveQue.IsEmpty)
                 {
-                    //ListUpdate
                     List<SocketMessage> newMessages = new List<SocketMessage>();
-
                     while (saveQue.TryDequeue(out SocketMessage socketMessage))
                     {
                         newMessages.Add(socketMessage);
                     }
 
+                    //ListUpdate
                     foreach (var newMessage in newMessages)
                     {
                         var items = AllListInFile.Where(x => x.Key == newMessage.Key);
@@ -137,36 +146,39 @@ namespace SocketSignalServer
                         else
                         {
                             foreach (var item in items) { item.Update(newMessage); }
-                            Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " updateList");
+                            Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " updateList " + newMessage.ToString());
                         }
                     }
 
-
                     //DBfileUpdate
-                    using (LiteDatabase litedb = new LiteDatabase(_LiteDBconnectionString))
+                    if (newMessages.Count > 0)
                     {
-                        ILiteCollection<SocketMessage> liteCollection = litedb.GetCollection<SocketMessage>(TableName);
-
-                        foreach (var socketMessage in newMessages)
+                        using (LiteDatabase litedb = new LiteDatabase(_LiteDBconnectionString))
                         {
-                            if (liteCollection.FindById(socketMessage.Key) == null)
+                            ILiteCollection<SocketMessage> liteCollection = litedb.GetCollection<SocketMessage>(TableName);
+
+                            foreach (var socketMessage in newMessages)
                             {
-                                liteCollection.Insert(socketMessage.Key, socketMessage);
-                                Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " saveDBfile " + socketMessage.ToString());
+                                if (liteCollection.FindById(socketMessage.Key) == null)
+                                {
+                                    liteCollection.Insert(socketMessage.Key, socketMessage);
+                                    Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " saveDBfile " + socketMessage.ToString());
+                                }
+                                else
+                                {
+                                    liteCollection.Update(socketMessage.Key, socketMessage);
+                                    Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " updateDBfile " + socketMessage.ToString());
+                                }
                             }
-                            else
-                            {
-                                liteCollection.Update(socketMessage.Key, socketMessage);
-                                Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " updateDBfile " + socketMessage.ToString());
-                            }
+
+                            LastUpdateTime = DateTime.Now;
+
+                            _RefreshFlag = false;
                         }
-
-                        LastUpdateTime = DateTime.Now;
-
-                        _RefreshFlag = false;
                     }
                 }
 
+                //RefleshList
                 if (_RefreshFlag)
                 {
                     using (LiteDatabase litedb = new LiteDatabase(_LiteDBconnectionString))
@@ -179,6 +191,7 @@ namespace SocketSignalServer
                     _RefreshFlag = false;
                 }
 
+                //MoveOldDataToBackup
                 if ((DateTime.Now - LastBackupTime).TotalSeconds >= BackupIntervalSecond)
                 {
                     using (LiteDatabase litedb = new LiteDatabase(_LiteDBconnectionString))
@@ -201,8 +214,8 @@ namespace SocketSignalServer
                     }
                 }
 
+                //LoadData
                 List<Task<List<SocketMessage>>> taskList = new List<Task<List<SocketMessage>>>();
-
                 while (!loadQue.IsEmpty)
                 {
                     while (loadQue.TryDequeue(out Task<List<SocketMessage>> task))
@@ -210,11 +223,20 @@ namespace SocketSignalServer
                         taskList.Add(task);
                         task.Start();
                     }
-
                     Task<List<SocketMessage>>.WaitAll(taskList.ToArray());
                 }
 
-                Task.Delay(TimeSpan.FromMilliseconds(Interval), token).Wait();
+                //Interval
+                sw.Stop();
+                int remainingTime = Interval - (int)sw.ElapsedMilliseconds;
+                if (remainingTime > 0)
+                {
+                    Task.Delay(TimeSpan.FromMilliseconds(remainingTime), token).Wait();
+                }
+                else
+                {
+                    Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " workerIntervalOver " + remainingTime.ToString() + "ms");
+                }
             }
 
             return;
