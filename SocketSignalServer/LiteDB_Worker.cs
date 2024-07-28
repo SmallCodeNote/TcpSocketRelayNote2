@@ -148,11 +148,11 @@ namespace SocketSignalServer
                                 insertMessages.Add(upsertMessage);
                             }
                         }
-                        
+
                         AllListInFile.AddRange(insertMessages.ToList());
 
                         int ListUpdateTimeInMilisec = (int)(sw.ElapsedMilliseconds - startMillisec);
-                        DebugOutLines.Add("insertCount: " + insertCount.ToString() + " updateCount: " + updateCount.ToString() + " Item/Sec: " + ((insertCount + updateCount) * 1000 / (ListUpdateTimeInMilisec)).ToString());
+                        DebugOutLines.Add("insertCount: " + insertCount.ToString() + " updateCount: " + updateCount.ToString() + " Item/Sec: " + ((insertCount + updateCount) * 1000 / (ListUpdateTimeInMilisec)).ToString()+" ("+ ListUpdateTimeInMilisec.ToString()+")");
                         Debug.WriteLine(string.Join("\r\n", DebugOutLines)); DebugOutLines.Clear();
 
 
@@ -200,7 +200,7 @@ namespace SocketSignalServer
                     List<SocketMessage> RemoveDataList = new List<SocketMessage>();
                     if ((DateTime.Now - LastBackupTime).TotalSeconds >= BackupIntervalSecond)
                     {
-                        RemoveDataList.AddRange( BreakupLightDB_byMonthFile());
+                        RemoveDataList.AddRange(BreakupLightDB_byMonthFile());
                         if (RemoveDataList.Count > 0)
                         {
                             using (LiteDatabase litedb = new LiteDatabase(_LiteDBconnectionString))
@@ -254,94 +254,6 @@ namespace SocketSignalServer
             return;
         }
 
-        public int BreakupLightDB_byMonthFile(LiteDatabase litedb)
-        {
-            Stopwatch sw = new Stopwatch(); sw.Start();
-            int processCount = 0;
-            TimeSpan timeSpan = new TimeSpan(0, StoreTimeRangeMinute, 0);
-
-            var target = AllListInFile
-                .Where(x => x.connectTime < (DateTime)(DateTime.Now - timeSpan))
-                .OrderBy(x => x.connectTime)
-                ;
-
-            List<SocketMessage> targetQueryList = target.ToList();
-            if (targetQueryList.Count < 1) { return processCount; };
-
-            DateTime targetFirstTime = targetQueryList.First().connectTime;
-            DateTime targetLastTime = targetQueryList.Last().connectTime;
-
-            TimeSpan fileTimeSpan = new TimeSpan(31, 0, 0, 0);
-            DateTime fileStartTime = DateTime.Parse(targetFirstTime.ToString("yyyy/MM/01"));
-            DateTime fileEndTime = DateTime.Parse((fileStartTime + fileTimeSpan).ToString("yyyy/MM/01"));
-
-            ILiteCollection<SocketMessage> liteCollection = litedb.GetCollection<SocketMessage>(TableName);
-
-            do
-            {
-                ConnectionString backupFileString = new ConnectionString();
-                backupFileString.Connection = ConnectionType.Direct;//.Shared;//
-                backupFileString.Filename = Path.Combine(BackupDirTopPath, fileStartTime.ToString("yyyy"), fileStartTime.ToString("yyyyMM")) + ".db";
-
-                string backupFileDir = Path.GetDirectoryName(backupFileString.Filename);
-                if (!Directory.Exists(backupFileDir))
-                {
-                    Directory.CreateDirectory(backupFileDir);
-                }
-
-                var backupQueryList = targetQueryList.Where(x => x.connectTime < fileEndTime && x.connectTime >= fileStartTime).ToList();
-
-                try
-                {
-                    using (LiteDatabase litedbBackup = new LiteDatabase(backupFileString))
-                    {
-                        Debug.WriteLine("OpenLiteDB\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " Filename: " + Path.GetFileName(backupFileString.Filename));
-                        var colbk = litedbBackup.GetCollection<SocketMessage>(TableName);
-
-                        try
-                        {
-                            foreach (SocketMessage skm in backupQueryList)
-                            {
-                                if (colbk.FindById(skm.Key) == null)
-                                {
-                                    colbk.Insert(skm.Key, skm);
-                                }
-
-                                liteCollection.Delete(skm.Key);
-                                processCount++;
-                            }
-
-                            if (!litedb.Commit())
-                            {
-                                litedb.Rollback();
-                                Debug.WriteLine("RollbackLiteDB\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            litedb.Rollback();
-                            Debug.WriteLine("litedbBackup file operation exception ... " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine("litedbBackup file open exception ... " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
-                }
-
-                fileStartTime = fileEndTime;
-                fileEndTime = DateTime.Parse((fileStartTime + fileTimeSpan).ToString("yyyy/MM/01"));
-
-            } while (fileStartTime < targetLastTime);
-
-            AllListInFile = liteCollection.Query().ToList();
-
-            sw.Stop();
-            Debug.WriteLine("litedb Update ... " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " sw = " + sw.ElapsedMilliseconds.ToString());
-
-            return processCount;
-        }
-
         public List<SocketMessage> BreakupLightDB_byMonthFile()
         {
             List<SocketMessage> RemoveDataList = new List<SocketMessage>();
@@ -384,13 +296,13 @@ namespace SocketSignalServer
                         var colbk = litedbBackup.GetCollection<SocketMessage>(TableName);
                         storedMonthDataList = colbk.Query().ToList();
 
-                        Debug.WriteLine("OpenLiteDB\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " Filename: " + Path.GetFileName(backupFileString.Filename) +" sw: "+sw.ElapsedMilliseconds.ToString());
+                        Debug.WriteLine("OpenLiteDB\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " Filename: " + Path.GetFileName(backupFileString.Filename) + " sw: " + sw.ElapsedMilliseconds.ToString());
 
                         try
                         {
                             foreach (SocketMessage skm in filteredBreakupTargetList)
                             {
-                                if (storedMonthDataList.Any(x => x.Key == skm.Key))
+                                if (!storedMonthDataList.Any(x => x.Key == skm.Key))
                                 {
                                     monthInsertList.Add(skm);
                                 }

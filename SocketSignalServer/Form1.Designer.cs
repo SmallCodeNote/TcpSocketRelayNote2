@@ -76,6 +76,9 @@
             this.panel3 = new System.Windows.Forms.Panel();
             this.label6 = new System.Windows.Forms.Label();
             this.dataGridView_AddressList = new System.Windows.Forms.DataGridView();
+            this.Column_AddressList_Address = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.Column_AddressList_Name = new System.Windows.Forms.DataGridViewTextBoxColumn();
+            this.Column_AddressList_Info = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.checkBox_voiceOffSwitch = new System.Windows.Forms.CheckBox();
             this.button_AddressListLoad = new System.Windows.Forms.Button();
             this.textBox_httpTimeout = new System.Windows.Forms.TextBox();
@@ -108,9 +111,6 @@
             this.button_getDataBaseFilePath = new System.Windows.Forms.Button();
             this.label1 = new System.Windows.Forms.Label();
             this.textBox_DataBaseFilePath = new System.Windows.Forms.TextBox();
-            this.Column_AddressList_Address = new System.Windows.Forms.DataGridViewTextBoxColumn();
-            this.Column_AddressList_Name = new System.Windows.Forms.DataGridViewTextBoxColumn();
-            this.Column_AddressList_Info = new System.Windows.Forms.DataGridViewTextBoxColumn();
             this.toolStripContainer1.BottomToolStripPanel.SuspendLayout();
             this.toolStripContainer1.ContentPanel.SuspendLayout();
             this.toolStripContainer1.SuspendLayout();
@@ -612,6 +612,22 @@
             this.dataGridView_AddressList.TabIndex = 14;
             this.dataGridView_AddressList.CellValueChanged += new System.Windows.Forms.DataGridViewCellEventHandler(this.dataGridView_AddressList_CellValueChanged);
             // 
+            // Column_AddressList_Address
+            // 
+            this.Column_AddressList_Address.HeaderText = "Address";
+            this.Column_AddressList_Address.Name = "Column_AddressList_Address";
+            // 
+            // Column_AddressList_Name
+            // 
+            this.Column_AddressList_Name.HeaderText = "Name";
+            this.Column_AddressList_Name.Name = "Column_AddressList_Name";
+            // 
+            // Column_AddressList_Info
+            // 
+            this.Column_AddressList_Info.HeaderText = "Info";
+            this.Column_AddressList_Info.Name = "Column_AddressList_Info";
+            this.Column_AddressList_Info.Width = 250;
+            // 
             // checkBox_voiceOffSwitch
             // 
             this.checkBox_voiceOffSwitch.AutoSize = true;
@@ -866,7 +882,7 @@
             this.button_CreateDammyData.Location = new System.Drawing.Point(9, 160);
             this.button_CreateDammyData.Margin = new System.Windows.Forms.Padding(2);
             this.button_CreateDammyData.Name = "button_CreateDammyData";
-            this.button_CreateDammyData.Size = new System.Drawing.Size(120, 18);
+            this.button_CreateDammyData.Size = new System.Drawing.Size(120, 24);
             this.button_CreateDammyData.TabIndex = 22;
             this.button_CreateDammyData.Text = "CreateDammyData";
             this.button_CreateDammyData.UseVisualStyleBackColor = true;
@@ -946,22 +962,6 @@
             this.textBox_DataBaseFilePath.Name = "textBox_DataBaseFilePath";
             this.textBox_DataBaseFilePath.Size = new System.Drawing.Size(243, 19);
             this.textBox_DataBaseFilePath.TabIndex = 14;
-            // 
-            // Column_AddressList_Address
-            // 
-            this.Column_AddressList_Address.HeaderText = "Address";
-            this.Column_AddressList_Address.Name = "Column_AddressList_Address";
-            // 
-            // Column_AddressList_Name
-            // 
-            this.Column_AddressList_Name.HeaderText = "Name";
-            this.Column_AddressList_Name.Name = "Column_AddressList_Name";
-            // 
-            // Column_AddressList_Info
-            // 
-            this.Column_AddressList_Info.HeaderText = "Info";
-            this.Column_AddressList_Info.Name = "Column_AddressList_Info";
-            this.Column_AddressList_Info.Width = 250;
             // 
             // Form1
             // 
