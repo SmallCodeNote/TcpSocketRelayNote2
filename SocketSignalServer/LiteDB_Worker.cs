@@ -135,26 +135,29 @@ namespace SocketSignalServer
                         //ListUpdate
                         foreach (var upsertMessage in upsertMessages)
                         {
-                            if (AllListInFile.Any(x => x.Key == upsertMessage.Key))
+                            if (!AllListInFile.Any(x => x.Key == upsertMessage.Key))
+                            {
+                                insertCount++;
+                                insertMessages.Add(upsertMessage);
+                            }
+                            else
                             {
                                 updateCount++;
                                 AllListInFile.First(x => x.Key == upsertMessage.Key).Update(upsertMessage);
                                 updateMessages.Add(upsertMessage);
                                 updateKeys.Add(upsertMessage.Key);
                             }
-                            else
-                            {
-                                insertCount++;
-                                insertMessages.Add(upsertMessage);
-                            }
                         }
 
                         AllListInFile.AddRange(insertMessages.ToList());
 
                         int ListUpdateTimeInMilisec = (int)(sw.ElapsedMilliseconds - startMillisec);
-                        DebugOutLines.Add("insertCount: " + insertCount.ToString() + " updateCount: " + updateCount.ToString() + " Item/Sec: " + ((insertCount + updateCount) * 1000 / (ListUpdateTimeInMilisec)).ToString()+" ("+ ListUpdateTimeInMilisec.ToString()+")");
-                        Debug.WriteLine(string.Join("\r\n", DebugOutLines)); DebugOutLines.Clear();
 
+                        if (ListUpdateTimeInMilisec != 0)
+                        {
+                            DebugOutLines.Add("insertCount: " + insertCount.ToString() + " updateCount: " + updateCount.ToString() + " Item/Sec: " + ((insertCount + updateCount) * 1000 / (ListUpdateTimeInMilisec)).ToString() + " (" + ListUpdateTimeInMilisec.ToString() + ")");
+                            Debug.WriteLine(string.Join("\r\n", DebugOutLines)); DebugOutLines.Clear();
+                        }
 
                         //DBfileUpdate
                         if (upsertMessages.Count > 0)
@@ -217,8 +220,6 @@ namespace SocketSignalServer
                             if (File.Exists(backupBuildFilename)) { File.Delete(backupBuildFilename); };
                         }
                     }
-
-
 
                     //LoadData
                     List<Task<List<SocketMessage>>> taskList = new List<Task<List<SocketMessage>>>();

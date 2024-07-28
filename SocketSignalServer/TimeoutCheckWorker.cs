@@ -27,7 +27,7 @@ namespace SocketSignalServer
             {
                 tokenSource.Cancel();
                 Thread.Sleep(100);
-                if (worker != null) Task.WaitAll(new Task[] { worker });
+                if (worker != null) worker.Wait();
                 tokenSource.Dispose();
             }
         }
@@ -57,50 +57,57 @@ namespace SocketSignalServer
         {
             while (!token.IsCancellationRequested)
             {
-                if (true)
+                try
                 {
-                    SocketMessage[] dataset0, dataset1;
-
-                    var col = liteDB_Worker.LoadData();
-
-                    dataset0 = col
-                            .Where(x => x.status != "Timeout")
-                            .OrderByDescending(x => x.connectTime).ToArray();
-                    dataset1 = col
-                        .Where(x => x.status == "Timeout" && !x.check)
-                        .OrderByDescending(x => x.connectTime).ToArray();
-
-                    foreach (var clientTarget in clientList)
+                    if (true)
                     {
-                        //MessageRecord from Client
-                        var latestRecord = dataset0.Where(x => x.clientName == clientTarget.Name).FirstOrDefault();
+                        SocketMessage[] dataset0, dataset1;
 
-                        //MessageRecord Timeout
-                        var listedTimeoutMessage = dataset1.Where(x => x.clientName == clientTarget.Name).OrderByDescending(x => x.connectTime).ToList();
-                        if (clientTarget.LastAccessTime == null) { clientTarget.LastAccessTime = DateTime.Now; };//First Time
+                        var col = liteDB_Worker.LoadData();
 
-                        //Acccess Time Update
-                        if (latestRecord != null && clientTarget.LastAccessTime < latestRecord.connectTime)
+                        dataset0 = col
+                                .Where(x => x.status != "Timeout")
+                                .OrderByDescending(x => x.connectTime).ToArray();
+                        dataset1 = col
+                                .Where(x => x.status == "Timeout" && !x.check)
+                                .OrderByDescending(x => x.connectTime).ToArray();
+
+                        foreach (var clientTarget in clientList)
                         {
-                            clientTarget.LastAccessTime = latestRecord.connectTime;
-                        };
+                            //MessageRecord from Client
+                            var latestRecord = dataset0.Where(x => x.clientName == clientTarget.Name).FirstOrDefault();
 
-                        bool flag1 = (DateTime.Now - clientTarget.LastAccessTime).TotalSeconds > clientTarget.TimeoutLength;
-                        bool flag2 = listedTimeoutMessage.Count == 0;
+                            //MessageRecord Timeout
+                            var listedTimeoutMessage = dataset1.Where(x => x.clientName == clientTarget.Name).OrderByDescending(x => x.connectTime).ToList();
+                            if (clientTarget.LastAccessTime == null) { clientTarget.LastAccessTime = DateTime.Now; };//First Time
 
-                        if (clientTarget.TimeoutCheck && flag1 && flag2)
-                        {
-                            SocketMessage timeoutMessage = new SocketMessage(clientTarget.LastAccessTime, clientTarget.Name, "Timeout", clientTarget.TimeoutMessage, "", "Once");
-                            timeoutMessage.parameter = TimeoutMessageParameter;
-                            noticeTransmitter.AddNotice(clientTarget, timeoutMessage);
-                            clientTarget.LastTimeoutDetectedTime = DateTime.Now;
+                            //Acccess Time Update
+                            if (latestRecord != null && clientTarget.LastAccessTime < latestRecord.connectTime)
+                            {
+                                clientTarget.LastAccessTime = latestRecord.connectTime;
+                            };
 
-                            Debug.WriteLine("Timeout\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name +" "+ timeoutMessage.ToString());
+                            bool flag1 = (DateTime.Now - clientTarget.LastAccessTime).TotalSeconds > clientTarget.TimeoutLength;
+                            bool flag2 = listedTimeoutMessage.Count == 0;
+
+                            if (clientTarget.TimeoutCheck && flag1 && flag2)
+                            {
+                                SocketMessage timeoutMessage = new SocketMessage(clientTarget.LastAccessTime, clientTarget.Name, "Timeout", clientTarget.TimeoutMessage, "", "Once");
+                                timeoutMessage.parameter = TimeoutMessageParameter;
+                                noticeTransmitter.AddNotice(clientTarget, timeoutMessage);
+                                clientTarget.LastTimeoutDetectedTime = DateTime.Now;
+
+                                liteDB_Worker.SaveData(timeoutMessage);
+                                Debug.WriteLine("Timeout\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + timeoutMessage.ToString());
+                            }
                         }
                     }
+                    Task.Delay(TimeSpan.FromMilliseconds(Interval), token).Wait();
                 }
-
-                Task.Delay(TimeSpan.FromMilliseconds(Interval), token).Wait();
+                catch (Exception ex)
+                {
+                    Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
+                }
             }
             token.ThrowIfCancellationRequested();
         }
@@ -110,7 +117,7 @@ namespace SocketSignalServer
             if (worker == null)
             {
                 var token = tokenSource.Token;
-                worker = Task.Run(() => Worker(token),token);
+                worker = Task.Run(() => Worker(token), token);
                 IsBusy = true;
                 return true;
             }
