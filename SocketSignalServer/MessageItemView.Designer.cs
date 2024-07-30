@@ -59,7 +59,6 @@
             // checkBox_check
             // 
             this.checkBox_check.AutoSize = true;
-            this.checkBox_check.Enabled = false;
             this.checkBox_check.Font = new System.Drawing.Font("MS UI Gothic", 9F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(128)));
             this.checkBox_check.Location = new System.Drawing.Point(7, 30);
             this.checkBox_check.Margin = new System.Windows.Forms.Padding(2);
@@ -68,7 +67,7 @@
             this.checkBox_check.TabIndex = 3;
             this.checkBox_check.Text = "check";
             this.checkBox_check.UseVisualStyleBackColor = true;
-            this.checkBox_check.CheckedChanged += new System.EventHandler(this.checkBox1_CheckedChanged);
+            this.checkBox_check.CheckedChanged += new System.EventHandler(this.checkBox_CheckedChanged);
             // 
             // button_AllCheck
             // 

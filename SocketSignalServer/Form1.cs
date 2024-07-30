@@ -499,7 +499,7 @@ namespace SocketSignalServer
                 int TopBuff = 0;
                 for (int i = 0; i < ClientCount; i++)
                 {
-                    MessageItemView messageItemView = new MessageItemView();
+                    MessageItemView messageItemView = new MessageItemView(liteDB_Worker);
                     panel_StatusList.Controls.Add(messageItemView);
                     panel_StatusList.Controls[i].Top = TopBuff;
                     ((MessageItemView)panel_StatusList.Controls[i]).clientName = dataGridView_ClientList.Rows[i].Cells[0].Value.ToString();

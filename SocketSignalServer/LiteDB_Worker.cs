@@ -125,7 +125,6 @@ namespace SocketSignalServer
                             upsertMessages.Add(socketMessage);
                         }
 
-                        int insertCount = 0, updateCount = 0;
                         long startMillisec = sw.ElapsedMilliseconds;
 
                         List<SocketMessage> insertMessages = new List<SocketMessage>();
@@ -137,15 +136,28 @@ namespace SocketSignalServer
                         {
                             if (!AllListInFile.Any(x => x.Key == upsertMessage.Key))
                             {
-                                insertCount++;
-                                insertMessages.Add(upsertMessage);
+                                if (!insertMessages.Any(x => x.Key == upsertMessage.Key))
+                                {
+                                    insertMessages.Add(upsertMessage);
+                                }
+                                else
+                                {
+                                    insertMessages.First(x => x.Key == upsertMessage.Key).Update(upsertMessage);
+                                }
                             }
                             else
                             {
-                                updateCount++;
                                 AllListInFile.First(x => x.Key == upsertMessage.Key).Update(upsertMessage);
-                                updateMessages.Add(upsertMessage);
-                                updateKeys.Add(upsertMessage.Key);
+
+                                if (!updateMessages.Any(x => x.Key == upsertMessage.Key))
+                                {
+                                    updateMessages.Add(upsertMessage);
+                                    updateKeys.Add(upsertMessage.Key);
+                                }
+                                else
+                                {
+                                    updateMessages.First(x => x.Key == upsertMessage.Key).Update(upsertMessage);
+                                }
                             }
                         }
 
@@ -155,7 +167,7 @@ namespace SocketSignalServer
 
                         if (ListUpdateTimeInMilisec != 0)
                         {
-                            DebugOutLines.Add("insertCount: " + insertCount.ToString() + " updateCount: " + updateCount.ToString() + " Item/Sec: " + ((insertCount + updateCount) * 1000 / (ListUpdateTimeInMilisec)).ToString() + " (" + ListUpdateTimeInMilisec.ToString() + ")");
+                            DebugOutLines.Add("insertCount: " + insertMessages.Count.ToString() + " updateCount: " + updateMessages.Count.ToString() + " Item/Sec: " + ((insertMessages.Count + updateMessages.Count) * 1000 / (ListUpdateTimeInMilisec)).ToString() + " (" + ListUpdateTimeInMilisec.ToString() + ")");
                             Debug.WriteLine(string.Join("\r\n", DebugOutLines)); DebugOutLines.Clear();
                         }
 
@@ -168,10 +180,10 @@ namespace SocketSignalServer
                                 List<SocketMessage> liteCollectionList = liteCollection.Query().ToList();
 
                                 DebugOutLines.Add(DateTime.Now.ToString("HH:mm:ss.fff") + " insertBulkList");
-                                if (insertCount > 0) liteCollection.InsertBulk(insertMessages);
+                                if (insertMessages.Count > 0) liteCollection.InsertBulk(insertMessages);
 
                                 DebugOutLines.Add(DateTime.Now.ToString("HH:mm:ss.fff") + " updateMany");
-                                if (updateCount > 0)
+                                if (updateMessages.Count > 0)
                                 {
                                     liteCollection.DeleteMany(x => updateKeys.Contains(x.Key));
                                     liteCollection.InsertBulk(updateMessages);

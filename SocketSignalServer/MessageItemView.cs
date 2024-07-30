@@ -17,7 +17,7 @@ namespace SocketSignalServer
 {
     public partial class MessageItemView : UserControl
     {
-        public MessageItemView()
+        public MessageItemView(LiteDB_Worker liteDB_Worker)
         {
             InitializeComponent();
 
@@ -27,8 +27,11 @@ namespace SocketSignalServer
             this.label_LastMessage.Text = "";
             _socketMessage = new SocketMessage();
 
+            this.liteDB_Worker = liteDB_Worker;
+
         }
 
+        private LiteDB_Worker liteDB_Worker;
         private SocketMessage _socketMessage;
 
         public SocketMessage socketMessage
@@ -68,14 +71,24 @@ namespace SocketSignalServer
             return "now";
         }
 
-        private void checkBox1_CheckedChanged(object sender, EventArgs e)
+        private void checkBox_CheckedChanged(object sender, EventArgs e)
         {
             check = checkBox_check.Checked;
+            liteDB_Worker.SaveData(this._socketMessage);
         }
 
         private void button_AllCheck_Click(object sender, EventArgs e)
         {
+            List<SocketMessage> colQuery = liteDB_Worker.LoadData();
+            List<SocketMessage> dataset;
 
+            dataset = colQuery.Where(x => x.clientName == this.clientName).OrderByDescending(x => x.connectTime).ToList();
+
+            foreach (var item in dataset)
+            {
+                item.check = true;
+                liteDB_Worker.SaveData(item);
+            }
         }
     }
 }
