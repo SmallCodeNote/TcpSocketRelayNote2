@@ -455,7 +455,7 @@ namespace SocketReceiverBase
                 {
                     try
                     {
-                        if (UpdateParam_SendMessage_LastJudgmentFlag != JudgmentFlag && !JudgmentFlag) UpdateParam_SendMessage_Count = -1;
+                        if (UpdateParam_SendMessage_LastJudgmentFlag != JudgmentFlag) UpdateParam_SendMessage_Count = -1;
 
                         if (JudgmentFlag && UpdateParam_SendMessage_Count < 0)
                         {
@@ -468,11 +468,13 @@ namespace SocketReceiverBase
                             if (!int.TryParse(textBox_IntervalNG.Text, out UpdateParam_SendMessage_Count)) { UpdateParam_SendMessage_Count = 10; }
                         }
 
+                        UpdateParam_SendMessage_LastJudgmentFlag = JudgmentFlag;
                         UpdateParam_SendMessage_Count--;
+
+                        Task.Delay(TimeSpan.FromSeconds(UpdateInterval), token).Wait();
                     }
                     catch { }
 
-                    Task.Delay(TimeSpan.FromSeconds(UpdateInterval), token).Wait();
                 }
             }, token);
         }

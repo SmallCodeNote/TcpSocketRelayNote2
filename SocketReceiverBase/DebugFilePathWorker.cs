@@ -23,7 +23,15 @@ namespace SocketSignalServer
             get { return _outDirPath; }
             set
             {
-                if (Directory.Exists(value)) { _outDirPath = value; }
+                if (!Directory.Exists(value))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(value);
+                    }
+                    catch { _outDirPath = ""; return; }
+                }
+                _outDirPath = value;
             }
         }
 
