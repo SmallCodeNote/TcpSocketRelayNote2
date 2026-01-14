@@ -93,6 +93,7 @@ namespace SocketSignalServer
 
         private bool WorkersDirectoryCheckAndCreate()
         {
+            if (textBox_DataBaseFilePath.Text == "") return true;
             if (!Directory.Exists(Path.GetDirectoryName(textBox_DataBaseFilePath.Text))) { Directory.CreateDirectory(Path.GetDirectoryName(textBox_DataBaseFilePath.Text)); }
             if (!Directory.Exists(textBox_DebugOutDirPath.Text)) { Directory.CreateDirectory(textBox_DebugOutDirPath.Text); }
 
