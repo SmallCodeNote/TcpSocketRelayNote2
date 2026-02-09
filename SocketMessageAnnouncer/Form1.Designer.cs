@@ -254,7 +254,7 @@
             // 
             // button_AddSchedule
             // 
-            this.button_AddSchedule.Location = new System.Drawing.Point(415, 96);
+            this.button_AddSchedule.Location = new System.Drawing.Point(335, 330);
             this.button_AddSchedule.Margin = new System.Windows.Forms.Padding(2);
             this.button_AddSchedule.Name = "button_AddSchedule";
             this.button_AddSchedule.Size = new System.Drawing.Size(76, 29);
@@ -585,7 +585,7 @@
             // 
             // button_AddOnceJobPanel
             // 
-            this.button_AddOnceJobPanel.Location = new System.Drawing.Point(415, 126);
+            this.button_AddOnceJobPanel.Location = new System.Drawing.Point(415, 330);
             this.button_AddOnceJobPanel.Margin = new System.Windows.Forms.Padding(2);
             this.button_AddOnceJobPanel.Name = "button_AddOnceJobPanel";
             this.button_AddOnceJobPanel.Size = new System.Drawing.Size(77, 29);

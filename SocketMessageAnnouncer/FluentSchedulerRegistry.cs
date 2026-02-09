@@ -11,159 +11,181 @@ namespace tcpClient
 {
     public class FluentSchedulerRegistry : Registry
     {
-        public TcpSocketClient tcp;
-        public List<string> ScheduleList;
-        public string DataBaseFilePath;
+        public TcpSocketClient Tcp { get; }
+        public List<string> ScheduleList { get; }
+        public List<FluentSchedulerJob> ScheduleJobList { get; }
 
-        public List<FluentSchedulerJob> ScheduleJobList;
-
-        public string[] ScheduleUnitList = new string[] { "Once", "EveryDays", "EveryHours", "EverySeconds" };
-
-
-        public FluentSchedulerRegistry(TcpSocketClient tcp, string[] Lines)
+        public FluentSchedulerRegistry(TcpSocketClient tcp, string[] lines)
         {
+            Tcp = tcp;
             ScheduleList = new List<string>();
-            this.tcp = tcp;
             ScheduleJobList = new List<FluentSchedulerJob>();
 
-            foreach (string Line in Lines)
+            foreach (var line in lines)
             {
                 try
                 {
-                    FluentSchedulerJobParam param = new FluentSchedulerJobParam(tcp, Line);
-
-                    if (param.ScheduleUnit == "EveryDays")
-                    {
-                        try
-                        {
-                            string[] atinfo = param.ScheduleUnitParam.Split(',');
-                            foreach (string t in atinfo)
-                            {
-                                int[] hm = Array.ConvertAll(t.Split(':'), s => int.Parse(s));
-                                int h = hm[0];
-                                int m = hm[1];
-
-                                FluentSchedulerJob job = new FluentSchedulerJob(param);
-                                Schedule(job.Execute()).WithName(param.ToString()).ToRunEvery(1).Days().At(h, m);
-
-                                ScheduleList.Add("EveryDays at " + t);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
-
-                            ScheduleList.Add("ERROR: " + Line);
-                        }
-
-                    }
-                    else if (param.ScheduleUnit == "EveryHours")
-                    {
-                        try
-                        {
-                            int[] atinfo = Array.ConvertAll(param.ScheduleUnitParam.Split(','), s => int.Parse(s));
-                            foreach (int m in atinfo)
-                            {
-                                FluentSchedulerJob job = new FluentSchedulerJob(param);
-                                Schedule(job.Execute()).WithName(param.ToString()).ToRunEvery(1).Hours().At(m);
-                                ScheduleList.Add("EveryHours at " + m.ToString());
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
-
-                            ScheduleList.Add("ERROR: " + Line);
-                        }
-
-                    }
-                    else if (param.ScheduleUnit == "EverySeconds")
-                    {
-                        try
-                        {
-                            int[] atinfo = Array.ConvertAll(param.ScheduleUnitParam.Split(','), s => int.Parse(s));
-                            foreach (int s in atinfo)
-                            {
-                                FluentSchedulerJob job = new FluentSchedulerJob(param);
-                                Schedule(job.Execute()).WithName(param.ToString()).ToRunEvery(s).Seconds();
-                                ScheduleList.Add("EverySeconds at " + s.ToString());
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
-
-                            ScheduleList.Add("ERROR: " + Line);
-                        }
-
-                    }
-                    else if (param.ScheduleUnit == "OnceAtSeconds")
-                    {
-                        try
-                        {
-                            int[] atinfo = Array.ConvertAll(param.ScheduleUnitParam.Split(','), s => int.Parse(s));
-                            foreach (int s in atinfo)
-                            {
-                                FluentSchedulerJob job = new FluentSchedulerJob(param);
-                                Schedule(job.Execute()).WithName(param.ToString()).ToRunOnceIn(s).Seconds();
-                                ScheduleList.Add("Once at " + s.ToString());
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
-
-                            ScheduleList.Add("ERROR: " + Line);
-                        }
-
-                    }
-                    else if (param.ScheduleUnit == "OnceAtMinutes")
-                    {
-                        try
-                        {
-                            int[] atinfo = Array.ConvertAll(param.ScheduleUnitParam.Split(','), s => int.Parse(s));
-                            foreach (int s in atinfo)
-                            {
-                                FluentSchedulerJob job = new FluentSchedulerJob(param);
-                                Schedule(job.Execute()).WithName(param.ToString()).ToRunOnceIn(s).Minutes();
-                                ScheduleList.Add("Once at " + s.ToString());
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
-
-                            ScheduleList.Add("ERROR: " + Line);
-                        }
-
-                    }
-                    else if (param.ScheduleUnit == "OnceAtHours")
-                    {
-                        try
-                        {
-                            int[] atinfo = Array.ConvertAll(param.ScheduleUnitParam.Split(','), s => int.Parse(s));
-                            foreach (int s in atinfo)
-                            {
-                                FluentSchedulerJob job = new FluentSchedulerJob(param);
-                                Schedule(job.Execute()).WithName(param.ToString()).ToRunOnceIn(s).Hours();
-                                ScheduleList.Add("Once at " + s.ToString());
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
-
-                            ScheduleList.Add("ERROR: " + Line);
-                        }
-
-                    }
+                    var param = new FluentSchedulerJobParam(tcp, line);
+                    RegisterJob(param);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Registry::Constructor Error: {ex}");
+                    ScheduleList.Add("ERROR: " + line);
+                }
             }
-
         }
 
+        private void RegisterJob(FluentSchedulerJobParam param)
+        {
+            switch (param.ScheduleUnit)
+            {
+                case "EveryDays":
+                    RegisterDaily(param);
+                    break;
+
+                case "EveryHours":
+                    RegisterHourly(param);
+                    break;
+
+                case "EverySeconds":
+                    RegisterSeconds(param);
+                    break;
+
+                case "OnceAtSeconds":
+                    RegisterOnce(param, TimeUnit.Seconds);
+                    break;
+
+                case "OnceAtMinutes":
+                    RegisterOnce(param, TimeUnit.Minutes);
+                    break;
+
+                case "OnceAtHours":
+                    RegisterOnce(param, TimeUnit.Hours);
+                    break;
+
+                default:
+                    ScheduleList.Add("ERROR: Unknown ScheduleUnit: " + param.ScheduleUnit);
+                    break;
+            }
+        }
+
+        private void RegisterDaily(FluentSchedulerJobParam param)
+        {
+            try
+            {
+                foreach (var t in param.ScheduleUnitParam.Split(','))
+                {
+                    if (!TryParseHM(t, out int h, out int m))
+                    {
+                        ScheduleList.Add("ERROR: Invalid time " + t);
+                        continue;
+                    }
+
+                    var job = new FluentSchedulerJob(param);
+                    Schedule(job.Execute())
+                        .WithName(param.ToString())
+                        .ToRunEvery(1).Days().At(h, m);
+
+                    ScheduleList.Add("EveryDays at " + t);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"RegisterDaily Error: {ex}");
+                ScheduleList.Add("ERROR: " + param.ToString());
+            }
+        }
+
+        private void RegisterHourly(FluentSchedulerJobParam param)
+        {
+            try
+            {
+                foreach (var s in SplitIntList(param.ScheduleUnitParam))
+                {
+                    var job = new FluentSchedulerJob(param);
+                    Schedule(job.Execute())
+                        .WithName(param.ToString())
+                        .ToRunEvery(1).Hours().At(s);
+
+                    ScheduleList.Add("EveryHours at " + s);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"RegisterHourly Error: {ex}");
+                ScheduleList.Add("ERROR: " + param.ToString());
+            }
+        }
+
+        private void RegisterSeconds(FluentSchedulerJobParam param)
+        {
+            try
+            {
+                foreach (var s in SplitIntList(param.ScheduleUnitParam))
+                {
+                    var job = new FluentSchedulerJob(param);
+                    Schedule(job.Execute())
+                        .WithName(param.ToString())
+                        .ToRunEvery(s).Seconds();
+
+                    ScheduleList.Add("EverySeconds at " + s);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"RegisterSeconds Error: {ex}");
+                ScheduleList.Add("ERROR: " + param.ToString());
+            }
+        }
+
+        private void RegisterOnce(FluentSchedulerJobParam param, TimeUnit unit)
+        {
+            try
+            {
+                foreach (var s in SplitIntList(param.ScheduleUnitParam))
+                {
+                    var job = new FluentSchedulerJob(param);
+
+                    var schedule = Schedule(job.Execute()).WithName(param.ToString());
+
+                    switch (unit)
+                    {
+                        case TimeUnit.Seconds: schedule.ToRunOnceIn(s).Seconds(); break;
+                        case TimeUnit.Minutes: schedule.ToRunOnceIn(s).Minutes(); break;
+                        case TimeUnit.Hours: schedule.ToRunOnceIn(s).Hours(); break;
+                    }
+
+                    ScheduleList.Add("Once at " + s);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"RegisterOnce Error: {ex}");
+                ScheduleList.Add("ERROR: " + param.ToString());
+            }
+        }
+
+        private bool TryParseHM(string text, out int h, out int m)
+        {
+            h = m = 0;
+            var parts = text.Split(':');
+            if (parts.Length != 2) return false;
+            return int.TryParse(parts[0], out h) && int.TryParse(parts[1], out m);
+        }
+
+        private IEnumerable<int> SplitIntList(string text)
+        {
+            foreach (var s in text.Split(','))
+            {
+                if (int.TryParse(s, out int v))
+                    yield return v;
+            }
+        }
+
+        private enum TimeUnit { Seconds, Minutes, Hours }
     }
+
 
     public class FluentSchedulerJobParam
     {
@@ -242,81 +264,51 @@ namespace tcpClient
         }
     }
 
-
     public class FluentSchedulerJob
     {
-        public FluentSchedulerJobParam param;
-        public string Responce { get; private set; } = "";
+        public FluentSchedulerJobParam Param { get; }
+        public string Response { get; private set; } = "";
 
         public FluentSchedulerJob(FluentSchedulerJobParam param)
         {
-            this.param = param;
-        }
-
-        public override string ToString()
-        {
-            return param.ToString();
-        }
-
-        public FluentSchedulerJob(TcpSocketClient tcp, string addressPortSet, string jobname, string scheduleUnit, string clientName, string status, string message, string parameter, string CheckStyle)
-        {
-
-            param.tcp = tcp;
-
-            param.AddressPortSet = addressPortSet;
-
-            param.JobName = jobname;
-            param.ScheduleUnit = scheduleUnit;
-            param.ClientName = clientName;
-            param.Status = status;
-            param.Message = message;
-            param.Parameter = parameter;
-            param.CheckStyle = CheckStyle;
-
+            Param = param;
         }
 
         public Action Execute()
         {
-            return new Action(delegate ()
+            return async () =>
             {
-                string sendMessage = param.ClientName + "\t" + param.Status + "\t" + param.Message + "\t"
-                + param.Parameter + "\t" + param.CheckStyle.ToString();
-
-                string[] AddresSet = param.AddressPortSet.Trim('/').Split('/');
-                List<string> responce = new List<string>();
-                List<Task<string>> task = new List<Task<string>>();
-
-                foreach (var AddressLine in AddresSet)
+                try
                 {
-                    string[] Cols = AddressLine.Split(':');
-                    if (Cols.Length > 1)
-                    {
-                        string address = Cols[0];
-                        int port = int.Parse(Cols[1]);
+                    string sendMessage =
+                        $"{Param.ClientName}\t{Param.Status}\t{Param.Message}\t{Param.Parameter}\t{Param.CheckStyle}";
 
-                        task.Add(param.tcp.StartClient(address, port, sendMessage, "UTF8"));
+                    var addressList = Param.AddressPortSet.Trim('/').Split('/');
+                    var tasks = new List<Task<string>>();
+
+                    foreach (var line in addressList)
+                    {
+                        var cols = line.Split(':');
+                        if (cols.Length == 2 && int.TryParse(cols[1], out int port))
+                        {
+                            tasks.Add(Param.tcp.StartClient(cols[0], port, sendMessage, "UTF8"));
+                        }
+                    }
+
+                    var results = await Task.WhenAll(tasks);
+                    Response = string.Join("\n", results);
+
+                    if (Param.ScheduleUnit.Contains("Once"))
+                    {
+                        JobManager.RemoveJob(Param.ToString());
                     }
                 }
-
-                foreach (var t in task)
+                catch (Exception ex)
                 {
-                    responce.Add(t.Result);
+                    Debug.WriteLine($"FluentSchedulerJob.Execute Error: {ex}");
                 }
-
-                if (param.ScheduleUnit.IndexOf("Once") >= 0)
-                {
-                    JobManager.RemoveJob(param.ToString());
-                    int jobCount = 1;
-                    int timeout = 10;
-                    do
-                    {
-                        System.Threading.Thread.Sleep(10);
-                        jobCount = JobManager.AllSchedules.Where((x) => x.Name == param.ToString()).ToArray().Length;
-                        timeout--;
-                    } while (jobCount > 0 && timeout > 0);
-
-                }
-            });
+            };
         }
     }
+
 }
