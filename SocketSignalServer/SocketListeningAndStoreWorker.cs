@@ -1,9 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Linq;
-using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using tcpServer;
@@ -12,43 +9,57 @@ namespace SocketSignalServer
 {
     public class SocketListeningAndStoreWorker : IDisposable
     {
-        /// <param name="liteDB_Worker"></param>
-        /// <param name="Port"></param>
-        /// <param name="EncodingName">ex.)"ASCII","UTF8"</param>
-        public SocketListeningAndStoreWorker(LiteDB_Worker liteDB_Worker, int Port, string EncodingName = "UTF8")
-        {
-            this.liteDB_Worker = liteDB_Worker;
-            tokenSource = new CancellationTokenSource();
-            tcpSrv = new TcpSocketServer();
-            
-            LastCheckTime = DateTime.Now;
-            tcpSrv.Start(Port, EncodingName);
-
-        }
-
-        public void Dispose()
-        {
-            if (tokenSource != null)
-            {
-                tcpSrv.Stop();
-                
-                tokenSource.Cancel();
-                Thread.Sleep(100);
-                if (worker != null) Task.WaitAll(new Task[] { worker });
-                tokenSource.Dispose();
-            }
-        }
-
         public int Port { get { return tcpSrv.Port; } }
         public int WorkerLoopWait = 50;
         public DateTime LastCheckTime { get; private set; }
-        public string TimeoutMessageParameter = "";
         public bool IsBusy = false;
 
         private LiteDB_Worker liteDB_Worker;
         private TcpSocketServer tcpSrv;
         private CancellationTokenSource tokenSource;
         private Task worker;
+
+        private BlockingCollection<SocketMessage> dbQueue = new BlockingCollection<SocketMessage>();
+        private Task dbWriterTask;
+
+        /// <summary> Database write batch queue size </summary>
+        public int BatchSize = 50;
+
+        /// <summary> Database write batch queue wait(ms) </summary>
+        public int BatchWaitMs = 200;
+
+
+        public SocketListeningAndStoreWorker(LiteDB_Worker liteDB_Worker, int Port, string EncodingName = "UTF8")
+        {
+            this.liteDB_Worker = liteDB_Worker;
+            tokenSource = new CancellationTokenSource();
+            tcpSrv = new TcpSocketServer();
+
+            LastCheckTime = DateTime.Now;
+            tcpSrv.Start(Port, EncodingName);
+
+            dbWriterTask = Task.Run(() => DbWriterLoop(tokenSource.Token));
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                tcpSrv.Stop();
+                tokenSource.Cancel();
+
+                dbQueue.CompleteAdding();
+                dbWriterTask?.Wait();
+
+                if (worker != null)
+                    worker.Wait();
+            }
+            catch { }
+            finally
+            {
+                tokenSource.Dispose();
+            }
+        }
 
         public void Start()
         {
@@ -65,66 +76,114 @@ namespace SocketSignalServer
             try
             {
                 tokenSource.Cancel();
-                Thread.Sleep(100);
                 await worker;
                 IsBusy = false;
             }
-            catch (Exception ex)
-            {
-                //Debug.Write(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name);
-                //Debug.WriteLine(ex.ToString());
-            }
+            catch { }
         }
 
         private void Worker(CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
-                if ((tcpSrv.LastReceiveTime - LastCheckTime).TotalSeconds > 0 && tcpSrv.ReceivedSocketQueue.Count > 0)
+                if ((tcpSrv.LastReceiveTime - LastCheckTime).TotalSeconds > 0 &&
+                    tcpSrv.ReceivedSocketQueue.Count > 0)
                 {
-                    addNewDataFromServerQueueToDataBase();
+                    addNewDataFromServerQueueToDbQueue();
                     LastCheckTime = DateTime.Now;
                 }
+
                 Thread.Sleep(WorkerLoopWait);
             }
-            token.ThrowIfCancellationRequested();
         }
 
-        private void addNewDataFromServerQueueToDataBase()
+        private void DbWriterLoop(CancellationToken token)
         {
-            string receivedSocketMessage = "";
-            //============
-            // ReadQueue and Entry dataBase file
-            //============
-            while (tcpSrv.ReceivedSocketQueue.TryDequeue(out receivedSocketMessage))
+            var batch = new System.Collections.Generic.List<SocketMessage>(BatchSize);
+
+            while (!dbQueue.IsCompleted && !token.IsCancellationRequested)
             {
-                string[] cols = receivedSocketMessage.Split('\t');
-
-                if (cols.Length >= 4)
+                try
                 {
-                    DateTime connectTime;
-                    if (DateTime.TryParse(cols[0], out connectTime)) { connectTime = DateTime.Now; } else { continue; }
+                    SocketMessage msg;
 
-                    string clientName = cols[1];
-                    string status = cols[2];
-                    string message = cols[3];
-                    string parameter = cols.Length > 4 ? cols[4] : "";
-                    string checkStyle = cols.Length > 5 ? cols[5] : "Once";
+                    if (!dbQueue.TryTake(out msg, BatchWaitMs, token))
+                    {
+                        FlushBatch(batch);
+                        continue;
+                    }
 
-                    SocketMessage socketMessage = new SocketMessage(connectTime, clientName, status, message, parameter, checkStyle);
+                    batch.Add(msg);
 
+
+                    while (batch.Count < BatchSize && dbQueue.TryTake(out msg))
+                    {
+                        batch.Add(msg);
+                    }
+
+                    FlushBatch(batch);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine("DbWriterLoop error: " + ex);
+                }
+            }
+
+            FlushBatch(batch);
+        }
+
+        private void FlushBatch(System.Collections.Generic.List<SocketMessage> batch)
+        {
+            if (batch.Count == 0) return;
+
+            try
+            {
+                foreach (var msg in batch)
+                {
                     try
                     {
-                        liteDB_Worker.SaveData(socketMessage);
+                        liteDB_Worker.SaveData(msg);
                     }
                     catch (Exception ex)
                     {
                         tcpSrv.ResponceMessage = "DatabaseLocked";
-                        Debug.Write(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name);
-                        Debug.WriteLine(ex.ToString());
+                        Debug.WriteLine("FlushBatch SaveData error: " + ex);
                     }
                 }
+            }
+            finally
+            {
+                batch.Clear();
+            }
+        }
+
+        private void addNewDataFromServerQueueToDbQueue()
+        {
+            string receivedSocketMessage = "";
+
+            while (tcpSrv.ReceivedSocketQueue.TryDequeue(out receivedSocketMessage))
+            {
+                string[] cols = receivedSocketMessage.Split('\t');
+                if (cols.Length < 4) continue;
+
+                DateTime connectTime;
+                if (!DateTime.TryParse(cols[0], out connectTime)) continue;
+
+                string clientName = cols[1];
+                string status = cols[2];
+                string message = cols[3];
+                string parameter = cols.Length > 4 ? cols[4] : "";
+                string checkStyle = cols.Length > 5 ? cols[5] : "Once";
+
+                var socketMessage = new SocketMessage(connectTime, clientName, status, message, parameter, checkStyle);
+
+                dbQueue.Add(socketMessage);
             }
         }
     }
 }
+//2026.1.29

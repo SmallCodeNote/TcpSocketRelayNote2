@@ -1,321 +1,562 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Linq;
 using System.IO;
-using System.Text;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Collections.Concurrent;
 using LiteDB;
 
 namespace SocketSignalServer
 {
+
     public class LiteDB_Worker : IDisposable
     {
-        private ConnectionString _LiteDBconnectionString;
+        private readonly ConnectionString _liteDbConnectionString;
         public string TableName = "table_Message";
 
-        private List<SocketMessage> AllListInFile;
+        // Main data : List + Dictionary
+        private readonly List<SocketMessage> _allListInFile;
+        private readonly Dictionary<string, SocketMessage> _allDictInFile;
+        private readonly ReaderWriterLockSlim _dataLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
 
-        private ConcurrentQueue<SocketMessage> saveQue;
-        private ConcurrentQueue<Task<List<SocketMessage>>> loadQue;
+        private readonly ConcurrentQueue<SocketMessage> _saveQueue;
 
-        private Task worker;
-        private CancellationTokenSource tokenSource;
+        private Task _worker;
+        private CancellationTokenSource _tokenSource;
+        private readonly object _workerLock = new object();
 
         public string BackupDirTopPath = "";
         public int StoreTimeRangeMinute = 1440;
         public int BackupIntervalSecond = 60;
-        public float BackupIntervalMinute { get { return BackupIntervalSecond / 60f; } set { BackupIntervalSecond = (int)(value * 60); } }
+        public float BackupIntervalMinute
+        {
+            get { return BackupIntervalSecond / 60f; }
+            set { BackupIntervalSecond = (int)Math.Round(value * 60); }
+        }
+
         public DateTime LastBackupTime;
         public DateTime LastUpdateTime;
 
-        private bool _RefreshFlag = false;
+        private volatile bool _refreshFlag = false;
+        private readonly ManualResetEventSlim _refreshCompletedEvent = new ManualResetEventSlim(true);
 
         /// <summary> CheckInterval(ms) </summary>
-        public int Interval = 200;
+        public int Interval { get; set; } = 200;
+
+        private volatile bool _initialized = false;
 
         public LiteDB_Worker(string dbFilePath, string backupDirTopPath = "")
         {
-            tokenSource = new CancellationTokenSource();
+            _tokenSource = new CancellationTokenSource();
 
-            _LiteDBconnectionString = new ConnectionString();
-            _LiteDBconnectionString.Filename = dbFilePath;
-            _LiteDBconnectionString.Connection = ConnectionType.Shared;
-
-            if (!Directory.Exists(BackupDirTopPath)) { BackupDirTopPath = Path.Combine(Path.GetDirectoryName(dbFilePath), "_backup"); }
-
-            saveQue = new ConcurrentQueue<SocketMessage>();
-            loadQue = new ConcurrentQueue<Task<List<SocketMessage>>>();
-
-            if (System.IO.Directory.Exists(Path.GetDirectoryName(dbFilePath)))
+            _liteDbConnectionString = new ConnectionString
             {
-                using (LiteDatabase litedb = new LiteDatabase(_LiteDBconnectionString))
-                {
-                    ILiteCollection<SocketMessage> liteCollection = litedb.GetCollection<SocketMessage>(TableName);
-                    AllListInFile = liteCollection.Query().ToList();
-                    LastUpdateTime = DateTime.Now;
-                }
-                worker = Task.Run(() => Worker(tokenSource.Token));
+                Filename = dbFilePath,
+                Connection = ConnectionType.Shared
+            };
+
+            // BackupDirTopPath initialize
+            if (!string.IsNullOrWhiteSpace(backupDirTopPath))
+            {
+                BackupDirTopPath = backupDirTopPath;
             }
-            LastBackupTime = DateTime.Now - TimeSpan.FromSeconds(BackupIntervalSecond);
+            else
+            {
+                var baseDir = Path.GetDirectoryName(dbFilePath);
+                if (!string.IsNullOrEmpty(baseDir))
+                {
+                    BackupDirTopPath = Path.Combine(baseDir, "_backup");
+                }
+            }
+
+            _saveQueue = new ConcurrentQueue<SocketMessage>();
+            _allListInFile = new List<SocketMessage>();
+            _allDictInFile = new Dictionary<string, SocketMessage>();
+
+            try
+            {
+                var dir = Path.GetDirectoryName(dbFilePath);
+                if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
+                using (var litedb = new LiteDatabase(_liteDbConnectionString))
+                {
+                    var liteCollection = litedb.GetCollection<SocketMessage>(TableName);
+                    var list = liteCollection.Query().ToList();
+
+                    _dataLock.EnterWriteLock();
+                    try
+                    {
+                        _allListInFile.Clear();
+                        _allListInFile.AddRange(list);
+
+                        _allDictInFile.Clear();
+                        foreach (var m in list)
+                        {
+                            if (!string.IsNullOrEmpty(m.Key))
+                            {
+                                _allDictInFile[m.Key] = m;
+                            }
+                        }
+
+                        LastUpdateTime = DateTime.Now;
+                    }
+                    finally
+                    {
+                        _dataLock.ExitWriteLock();
+                    }
+                }
+
+                _initialized = true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{GetType().Name}::Ctor LiteDB init exception: {ex}");
+                _initialized = false;
+            }
+
+            LastBackupTime = DateTime.Now;
+            if (_initialized)
+            {
+                Start();
+            }
         }
 
         public void Dispose()
         {
-            if (tokenSource != null)
+            try
             {
-                tokenSource.Cancel();
-                tokenSource.Dispose();
+                Stop();
             }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{GetType().Name}::Dispose Stop exception: {ex}");
+            }
+
+            _dataLock?.Dispose();
+            _refreshCompletedEvent?.Dispose();
         }
 
         public void SaveData(SocketMessage message)
         {
-            saveQue.Enqueue(message);
+            if (message == null) return;
+            if (!_initialized)
+            {
+                Debug.WriteLine($"{GetType().Name}::SaveData called while not initialized.");
+                return;
+            }
+
+            _saveQueue.Enqueue(message);
         }
 
         public List<SocketMessage> LoadData()
         {
-            Task<List<SocketMessage>> task = new Task<List<SocketMessage>>(() => new List<SocketMessage>(AllListInFile));
-            loadQue.Enqueue(task);
-            return task.Result;
+            _dataLock.EnterReadLock();
+            try
+            {
+                return new List<SocketMessage>(_allListInFile);
+            }
+            finally
+            {
+                _dataLock.ExitReadLock();
+            }
         }
 
         public void Refresh()
         {
-            DateTime lastUpdateTimeStore = LastUpdateTime;
-            _RefreshFlag = true;
-            while (lastUpdateTimeStore == LastUpdateTime) { Thread.Sleep(100); }
+            if (!_initialized)
+            {
+                Debug.WriteLine($"{GetType().Name}::Refresh called while not initialized.");
+                return;
+            }
+
+            _refreshCompletedEvent.Reset();
+            _refreshFlag = true;
+
+            if (!_refreshCompletedEvent.Wait(TimeSpan.FromSeconds(5)))
+            {
+                Debug.WriteLine($"{GetType().Name}::Refresh timeout.");
+            }
         }
 
         public void Start()
         {
-            if (worker == null || worker.IsCompleted)
+            if (!_initialized)
             {
-                var token = tokenSource.Token;
-                worker = Task.Run(() => { try { Worker(token); } catch { } }, token);
+                Debug.WriteLine($"{GetType().Name}::Start called while not initialized.");
+                return;
+            }
+
+            lock (_workerLock)
+            {
+                if (_worker != null && !_worker.IsCompleted)
+                {
+                    return;
+                }
+
+                if (_tokenSource == null || _tokenSource.IsCancellationRequested)
+                {
+                    _tokenSource?.Dispose();
+                    _tokenSource = new CancellationTokenSource();
+                }
+
+                var token = _tokenSource.Token;
+                _worker = Task.Factory.StartNew(
+                    () =>
+                    {
+                        try
+                        {
+                            Worker(token);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"{GetType().Name}::Start Worker exception: {ex}");
+                        }
+                    },
+                    token,
+                    TaskCreationOptions.LongRunning,
+                    TaskScheduler.Default);
             }
         }
 
         public void Stop()
         {
-            tokenSource.Cancel();
-            worker.Wait();
-        }
-
-        private void Worker(CancellationToken token)
-        {
-            Stopwatch sw = new Stopwatch();
-
-            while (!token.IsCancellationRequested)
+            lock (_workerLock)
             {
-                sw.Reset(); sw.Start();
-                List<string> DebugOutLines = new List<string>();
+                if (_tokenSource == null)
+                {
+                    return;
+                }
 
                 try
                 {
-                    //QueueLoad
-                    if (!saveQue.IsEmpty)
+                    _tokenSource.Cancel();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"{GetType().Name}::Stop Cancel exception: {ex}");
+                }
+
+                try
+                {
+                    if (_worker != null && !_worker.IsCompleted)
                     {
-                        List<SocketMessage> upsertMessages = new List<SocketMessage>();
-                        while (saveQue.TryDequeue(out SocketMessage socketMessage))
-                        {
-                            upsertMessages.Add(socketMessage);
-                        }
-
-                        long startMillisec = sw.ElapsedMilliseconds;
-
-                        List<SocketMessage> insertMessages = new List<SocketMessage>();
-                        List<SocketMessage> updateMessages = new List<SocketMessage>();
-                        List<string> updateKeys = new List<string>();
-
-                        //ListUpdate
-                        foreach (var upsertMessage in upsertMessages)
-                        {
-                            if (!AllListInFile.Any(x => x.Key == upsertMessage.Key))
-                            {
-                                if (!insertMessages.Any(x => x.Key == upsertMessage.Key))
-                                {
-                                    insertMessages.Add(upsertMessage);
-                                }
-                                else
-                                {
-                                    insertMessages.First(x => x.Key == upsertMessage.Key).Update(upsertMessage);
-                                }
-                            }
-                            else
-                            {
-                                AllListInFile.First(x => x.Key == upsertMessage.Key).Update(upsertMessage);
-
-                                if (!updateMessages.Any(x => x.Key == upsertMessage.Key))
-                                {
-                                    updateMessages.Add(upsertMessage);
-                                    updateKeys.Add(upsertMessage.Key);
-                                }
-                                else
-                                {
-                                    updateMessages.First(x => x.Key == upsertMessage.Key).Update(upsertMessage);
-                                }
-                            }
-                        }
-
-                        AllListInFile.AddRange(insertMessages.ToList());
-
-                        int ListUpdateTimeInMilisec = (int)(sw.ElapsedMilliseconds - startMillisec);
-
-                        if (ListUpdateTimeInMilisec != 0)
-                        {
-                            DebugOutLines.Add("insertCount: " + insertMessages.Count.ToString() + " updateCount: " + updateMessages.Count.ToString() + " Item/Sec: " + ((insertMessages.Count + updateMessages.Count) * 1000 / (ListUpdateTimeInMilisec)).ToString() + " (" + ListUpdateTimeInMilisec.ToString() + ")");
-                            Debug.WriteLine(string.Join("\r\n", DebugOutLines)); DebugOutLines.Clear();
-                        }
-
-                        //DBfileUpdate
-                        if (upsertMessages.Count > 0)
-                        {
-                            using (LiteDatabase litedb = new LiteDatabase(_LiteDBconnectionString))
-                            {
-                                ILiteCollection<SocketMessage> liteCollection = litedb.GetCollection<SocketMessage>(TableName);
-                                List<SocketMessage> liteCollectionList = liteCollection.Query().ToList();
-
-                                DebugOutLines.Add(DateTime.Now.ToString("HH:mm:ss.fff") + " insertBulkList");
-                                if (insertMessages.Count > 0) liteCollection.InsertBulk(insertMessages);
-
-                                DebugOutLines.Add(DateTime.Now.ToString("HH:mm:ss.fff") + " updateMany");
-                                if (updateMessages.Count > 0)
-                                {
-                                    liteCollection.DeleteMany(x => updateKeys.Contains(x.Key));
-                                    liteCollection.InsertBulk(updateMessages);
-                                }
-
-                                DebugOutLines.Add(DateTime.Now.ToString("HH:mm:ss.fff") + " updateFinish");
-                                LastUpdateTime = DateTime.Now;
-
-                                _RefreshFlag = false;
-                            }
-                        }
-                        if (DebugOutLines.Count > 0) Debug.WriteLine(string.Join("\r\n", DebugOutLines)); DebugOutLines.Clear();
+                        _worker.Wait(2000);
                     }
-
-                    //RefleshList
-                    if (_RefreshFlag)
+                }
+                catch (AggregateException aex)
+                {
+                    foreach (var ex in aex.Flatten().InnerExceptions)
                     {
-                        using (LiteDatabase litedb = new LiteDatabase(_LiteDBconnectionString))
-                        {
-                            ILiteCollection<SocketMessage> liteCollection = litedb.GetCollection<SocketMessage>(TableName);
-                            AllListInFile = liteCollection.Query().ToList();
-                        }
-
-                        LastUpdateTime = DateTime.Now;
-                        _RefreshFlag = false;
-                    }
-
-                    //MoveOldDataToBackup
-                    List<SocketMessage> RemoveDataList = new List<SocketMessage>();
-                    if ((DateTime.Now - LastBackupTime).TotalSeconds >= BackupIntervalSecond)
-                    {
-                        RemoveDataList.AddRange(BreakupLightDB_byMonthFile());
-                        if (RemoveDataList.Count > 0)
-                        {
-                            using (LiteDatabase litedb = new LiteDatabase(_LiteDBconnectionString))
-                            {
-                                ILiteCollection<SocketMessage> liteCollection = litedb.GetCollection<SocketMessage>(TableName);
-
-                                List<string> deleteKeys = RemoveDataList.Select(x => x.Key).ToList();
-                                liteCollection.DeleteMany(x => deleteKeys.Contains(x.Key));
-
-                                litedb.Rebuild();
-                                LastBackupTime = DateTime.Now;
-                            }
-                            string backupBuildFilename = Path.Combine(Path.GetDirectoryName(_LiteDBconnectionString.Filename), Path.GetFileNameWithoutExtension(_LiteDBconnectionString.Filename) + "-backup" + Path.GetExtension(_LiteDBconnectionString.Filename));
-                            if (File.Exists(backupBuildFilename)) { File.Delete(backupBuildFilename); };
-                        }
-                    }
-
-                    //LoadData
-                    List<Task<List<SocketMessage>>> taskList = new List<Task<List<SocketMessage>>>();
-                    while (!loadQue.IsEmpty)
-                    {
-                        while (loadQue.TryDequeue(out Task<List<SocketMessage>> task))
-                        {
-                            taskList.Add(task);
-                            task.Start();
-                        }
-                        Task<List<SocketMessage>>.WaitAll(taskList.ToArray());
-                    }
-
-                    //Interval
-                    sw.Stop();
-                    int remainingTime = Interval - (int)sw.ElapsedMilliseconds;
-                    if (remainingTime > 0)
-                    {
-                        Task.Delay(TimeSpan.FromMilliseconds(remainingTime), token).Wait();
-                    }
-                    else
-                    {
-                        Debug.WriteLine(DateTime.Now.ToString("HH:mm:ss.fff") + " workerIntervalOver " + remainingTime.ToString() + "ms");
+                        Debug.WriteLine($"{GetType().Name}::Stop Worker wait inner exception: {ex}");
                     }
                 }
                 catch (Exception ex)
                 {
-                    if (DebugOutLines.Count > 0) Debug.WriteLine(string.Join("\r\n", DebugOutLines)); DebugOutLines.Clear();
-                    Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
+                    Debug.WriteLine($"{GetType().Name}::Stop Worker wait exception: {ex}");
+                }
+
+                _tokenSource.Dispose();
+                _tokenSource = null;
+                _worker = null;
+            }
+        }
+
+        private void Worker(CancellationToken token)
+        {
+            var sw = new Stopwatch();
+
+            using (var litedb = new LiteDatabase(_liteDbConnectionString))
+            {
+                var liteCollection = litedb.GetCollection<SocketMessage>(TableName);
+
+                while (!token.IsCancellationRequested)
+                {
+                    sw.Reset();
+                    sw.Start();
+                    var debugLines = new List<string>();
+
+                    try
+                    {
+                        // Queue Save
+                        if (!_saveQueue.IsEmpty)
+                        {
+                            var upsertMessages = new List<SocketMessage>();
+                            SocketMessage socketMessage;
+                            while (_saveQueue.TryDequeue(out socketMessage))
+                            {
+                                if (socketMessage != null)
+                                    upsertMessages.Add(socketMessage);
+                            }
+
+                            if (upsertMessages.Count > 0)
+                            {
+                                var startMillisec = sw.ElapsedMilliseconds;
+
+                                //[1] Update List and Dictionary in Memory
+                                _dataLock.EnterWriteLock();
+                                try
+                                {
+                                    foreach (var upsert in upsertMessages)
+                                    {
+                                        if (string.IsNullOrEmpty(upsert.Key)) continue;
+
+                                        SocketMessage existing;
+                                        if (!_allDictInFile.TryGetValue(upsert.Key, out existing))
+                                        {
+                                            // New
+                                            _allListInFile.Add(upsert);
+                                            _allDictInFile[upsert.Key] = upsert;
+                                        }
+                                        else
+                                        {
+                                            // Update
+                                            existing.Update(upsert);
+                                        }
+                                    }
+
+                                    LastUpdateTime = DateTime.Now;
+                                }
+                                finally
+                                {
+                                    _dataLock.ExitWriteLock();
+                                }
+
+                                var listUpdateTimeMs = (int)(sw.ElapsedMilliseconds - startMillisec);
+                                if (listUpdateTimeMs > 0)
+                                {
+                                    var total = upsertMessages.Count;
+                                    var ips = total * 1000 / listUpdateTimeMs;
+                                    debugLines.Add($"upsertCount: {total} Item/Sec: {ips} ({listUpdateTimeMs}ms)");
+                                }
+
+                                //[2] Update DB (Upsert / DeleteMany + InsertBulk avoid)
+                                try
+                                {
+                                    debugLines.Add($"{DateTime.Now:HH:mm:ss.fff} upsertBulk");
+                                    liteCollection.Upsert(upsertMessages);
+                                    debugLines.Add($"{DateTime.Now:HH:mm:ss.fff} upsertFinish");
+                                    LastUpdateTime = DateTime.Now;
+                                }
+                                catch (Exception exDb)
+                                {
+                                    debugLines.Add($"{GetType().Name}::Worker DB upsert exception: {exDb}");
+                                }
+
+                                if (debugLines.Count > 0)
+                                {
+                                    Debug.WriteLine(string.Join(Environment.NewLine, debugLines));
+                                    debugLines.Clear();
+                                }
+                            }
+                        }
+
+                        // Refresh List from DB
+                        if (_refreshFlag)
+                        {
+                            try
+                            {
+                                var list = liteCollection.Query().ToList();
+
+                                _dataLock.EnterWriteLock();
+                                try
+                                {
+                                    _allListInFile.Clear();
+                                    _allListInFile.AddRange(list);
+
+                                    _allDictInFile.Clear();
+                                    foreach (var m in list)
+                                    {
+                                        if (!string.IsNullOrEmpty(m.Key))
+                                        {
+                                            _allDictInFile[m.Key] = m;
+                                        }
+                                    }
+
+                                    LastUpdateTime = DateTime.Now;
+                                }
+                                finally
+                                {
+                                    _dataLock.ExitWriteLock();
+                                }
+                            }
+                            catch (Exception exRef)
+                            {
+                                Debug.WriteLine($"{GetType().Name}::Worker Refresh exception: {exRef}");
+                            }
+                            finally
+                            {
+                                _refreshFlag = false;
+                                _refreshCompletedEvent.Set();
+                            }
+                        }
+
+                        // Move old data to backup
+                        if ((DateTime.Now - LastBackupTime).TotalSeconds >= BackupIntervalSecond)
+                        {
+                            List<SocketMessage> removeDataList = null;
+                            try
+                            {
+                                removeDataList = BreakupLightDB_byMonthFile();
+                            }
+                            catch (Exception exBk)
+                            {
+                                Debug.WriteLine($"{GetType().Name}::Worker Breakup exception: {exBk}");
+                            }
+
+                            if (removeDataList != null && removeDataList.Count > 0)
+                            {
+                                try
+                                {
+                                    var deleteKeys = new HashSet<string>(removeDataList.Select(x => x.Key));
+                                    liteCollection.DeleteMany(x => deleteKeys.Contains(x.Key));
+
+                                    litedb.Rebuild();
+                                    LastBackupTime = DateTime.Now;
+                                }
+                                catch (Exception exDbBk)
+                                {
+                                    Debug.WriteLine($"{GetType().Name}::Worker Backup DB exception: {exDbBk}");
+                                }
+
+                                try
+                                {
+                                    var backupBuildFilename = Path.Combine(
+                                        Path.GetDirectoryName(_liteDbConnectionString.Filename),
+                                        Path.GetFileNameWithoutExtension(_liteDbConnectionString.Filename) + "-backup" +
+                                        Path.GetExtension(_liteDbConnectionString.Filename));
+
+                                    if (!string.IsNullOrEmpty(backupBuildFilename) && File.Exists(backupBuildFilename))
+                                    {
+                                        File.Delete(backupBuildFilename);
+                                    }
+                                }
+                                catch (Exception exFile)
+                                {
+                                    Debug.WriteLine($"{GetType().Name}::Worker Backup file delete exception: {exFile}");
+                                }
+                            }
+                        }
+
+                        // Interval wait
+                        sw.Stop();
+                        var remainingTime = Interval - (int)sw.ElapsedMilliseconds;
+                        if (remainingTime > 0)
+                        {
+                            try
+                            {
+                                Task.Delay(remainingTime, token).GetAwaiter().GetResult();
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                // Cancel ... process finish
+                            }
+                        }
+                        else
+                        {
+                            Debug.WriteLine($"{DateTime.Now:HH:mm:ss.fff} workerIntervalOver {remainingTime}ms");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (debugLines.Count > 0)
+                        {
+                            Debug.WriteLine(string.Join(Environment.NewLine, debugLines));
+                            debugLines.Clear();
+                        }
+                        Debug.WriteLine($"{GetType().Name}::Worker exception: {ex}");
+                    }
                 }
             }
-
-            return;
         }
 
         public List<SocketMessage> BreakupLightDB_byMonthFile()
         {
-            List<SocketMessage> RemoveDataList = new List<SocketMessage>();
-            Stopwatch sw = new Stopwatch(); sw.Start();
+            var removeDataList = new List<SocketMessage>();
+            var sw = new Stopwatch();
+            sw.Start();
 
-            TimeSpan timeSpan = new TimeSpan(0, StoreTimeRangeMinute, 0);
+            var timeSpan = TimeSpan.FromMinutes(StoreTimeRangeMinute);
 
-            List<SocketMessage> breakupTargetList = AllListInFile
-                .Where(x => x.connectTime < (DateTime)(DateTime.Now - timeSpan))
-                .OrderBy(x => x.connectTime).ToList();
+            List<SocketMessage> breakupTargetList;
+            _dataLock.EnterReadLock();
+            try
+            {
+                var now = DateTime.Now;
+                breakupTargetList = _allListInFile
+                    .Where(x => x.connectTime < now - timeSpan)
+                    .OrderBy(x => x.connectTime)
+                    .ToList();
+            }
+            finally
+            {
+                _dataLock.ExitReadLock();
+            }
 
-            if (breakupTargetList.Count < 1) { return RemoveDataList; };
+            if (breakupTargetList.Count < 1)
+            {
+                return removeDataList;
+            }
 
+            var targetFirstTime = breakupTargetList.First().connectTime;
+            var targetLastTime = breakupTargetList.Last().connectTime;
 
-            DateTime targetFirstTime = breakupTargetList.First().connectTime;
-            DateTime targetLastTime = breakupTargetList.Last().connectTime;
-
-            TimeSpan fileTimeSpan = new TimeSpan(31, 0, 0, 0);
-            DateTime fileStartTime = DateTime.Parse(targetFirstTime.ToString("yyyy/MM/01"));
-            DateTime fileEndTime = DateTime.Parse((fileStartTime + fileTimeSpan).ToString("yyyy/MM/01"));
+            var fileStartTime = new DateTime(targetFirstTime.Year, targetFirstTime.Month, 1);
+            var fileEndTime = fileStartTime.AddMonths(1);
 
             do
             {
-                ConnectionString backupFileString = new ConnectionString();
-                backupFileString.Connection = ConnectionType.Direct;//.Shared;//
-                backupFileString.Filename = Path.Combine(BackupDirTopPath, fileStartTime.ToString("yyyy"), fileStartTime.ToString("yyyyMM")) + ".db";
+                var backupFileString = new ConnectionString
+                {
+                    Connection = ConnectionType.Direct,
+                    Filename = Path.Combine(
+                        BackupDirTopPath,
+                        fileStartTime.ToString("yyyy"),
+                        fileStartTime.ToString("yyyyMM") + ".db")
+                };
 
-                string backupFileDir = Path.GetDirectoryName(backupFileString.Filename);
-                if (!Directory.Exists(backupFileDir)) { Directory.CreateDirectory(backupFileDir); }
+                var backupFileDir = Path.GetDirectoryName(backupFileString.Filename);
+                if (!string.IsNullOrEmpty(backupFileDir) && !Directory.Exists(backupFileDir))
+                {
+                    Directory.CreateDirectory(backupFileDir);
+                }
 
-                List<SocketMessage> filteredBreakupTargetList = breakupTargetList.Where(x => x.connectTime >= fileStartTime && x.connectTime < fileEndTime).ToList();
-                List<SocketMessage> storedMonthDataList = new List<SocketMessage>();
-                List<SocketMessage> monthInsertList = new List<SocketMessage>();
-                List<SocketMessage> monthUpdateList = new List<SocketMessage>();
+                var filteredBreakupTargetList = breakupTargetList
+                    .Where(x => x.connectTime >= fileStartTime && x.connectTime < fileEndTime)
+                    .ToList();
+
+                if (filteredBreakupTargetList.Count == 0)
+                {
+                    fileStartTime = fileEndTime;
+                    fileEndTime = fileStartTime.AddMonths(1);
+                    continue;
+                }
 
                 try
                 {
-                    using (LiteDatabase litedbBackup = new LiteDatabase(backupFileString))
+                    using (var litedbBackup = new LiteDatabase(backupFileString))
                     {
                         var colbk = litedbBackup.GetCollection<SocketMessage>(TableName);
-                        storedMonthDataList = colbk.Query().ToList();
+                        var storedMonthDataList = colbk.Query().ToList();
 
-                        Debug.WriteLine("OpenLiteDB\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " Filename: " + Path.GetFileName(backupFileString.Filename) + " sw: " + sw.ElapsedMilliseconds.ToString());
+                        Debug.WriteLine($"OpenLiteDB\t{GetType().Name}::{System.Reflection.MethodBase.GetCurrentMethod().Name} Filename: {Path.GetFileName(backupFileString.Filename)} sw: {sw.ElapsedMilliseconds}");
 
                         try
                         {
-                            foreach (SocketMessage skm in filteredBreakupTargetList)
+                            var storedKeySet = new HashSet<string>(storedMonthDataList.Select(x => x.Key));
+
+                            var monthInsertList = new List<SocketMessage>();
+                            var monthUpdateList = new List<SocketMessage>();
+
+                            foreach (var skm in filteredBreakupTargetList)
                             {
-                                if (!storedMonthDataList.Any(x => x.Key == skm.Key))
+                                if (string.IsNullOrEmpty(skm.Key)) continue;
+
+                                if (!storedKeySet.Contains(skm.Key))
                                 {
                                     monthInsertList.Add(skm);
                                 }
@@ -323,42 +564,65 @@ namespace SocketSignalServer
                                 {
                                     monthUpdateList.Add(skm);
                                 }
-
-                                RemoveDataList.Add(skm);
                             }
 
-                            if (monthInsertList.Count > 0) { colbk.InsertBulk(monthInsertList); }
+                            if (monthInsertList.Count > 0)
+                            {
+                                colbk.InsertBulk(monthInsertList);
+                            }
+
                             if (monthUpdateList.Count > 0)
                             {
-                                List<string> deleteKeys = monthUpdateList.Select(x => x.Key).ToList();
+                                var deleteKeys = new HashSet<string>(monthUpdateList.Select(x => x.Key));
                                 colbk.DeleteMany(x => deleteKeys.Contains(x.Key));
                                 colbk.InsertBulk(monthUpdateList);
                             }
+
+                            removeDataList.AddRange(filteredBreakupTargetList);
                         }
-                        catch (Exception ex)
+                        catch (Exception exOp)
                         {
-                            Debug.WriteLine("litedbBackup file operation exception ... " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
+                            Debug.WriteLine($"litedbBackup file operation exception ... {GetType().Name}::{System.Reflection.MethodBase.GetCurrentMethod().Name} {exOp}");
                         }
                     }
 
-                    foreach (var item in filteredBreakupTargetList) { AllListInFile.RemoveAll(x => x.Key == item.Key); }
+                    // remove data from memory
+                    if (removeDataList.Count > 0)
+                    {
+                        _dataLock.EnterWriteLock();
+                        try
+                        {
+                            var removeKeySet = new HashSet<string>(removeDataList.Select(x => x.Key));
 
+                            _allListInFile.RemoveAll(x => removeKeySet.Contains(x.Key));
+                            foreach (var key in removeKeySet)
+                            {
+                                _allDictInFile.Remove(key);
+                            }
+
+                            LastUpdateTime = DateTime.Now;
+                        }
+                        finally
+                        {
+                            _dataLock.ExitWriteLock();
+                        }
+                    }
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine("litedbBackup file open exception ... " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
+                    Debug.WriteLine($"litedbBackup file open exception ... {GetType().Name}::{System.Reflection.MethodBase.GetCurrentMethod().Name} {ex}");
                 }
 
                 fileStartTime = fileEndTime;
-                fileEndTime = DateTime.Parse((fileStartTime + fileTimeSpan).ToString("yyyy/MM/01"));
+                fileEndTime = fileStartTime.AddMonths(1);
 
             } while (fileStartTime < targetLastTime);
 
             sw.Stop();
-            Debug.WriteLine("litedb Update ... " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " sw = " + sw.ElapsedMilliseconds.ToString());
+            Debug.WriteLine($"litedb Update ... {GetType().Name}::{System.Reflection.MethodBase.GetCurrentMethod().Name} sw = {sw.ElapsedMilliseconds}");
 
-            return RemoveDataList;
+            return removeDataList;
         }
     }
-
 }
+//2026.2.1

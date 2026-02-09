@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Data;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -138,8 +136,6 @@ namespace SocketSignalServer
             }
         }
 
-
-
         private void ClientListInitialize()
         {
             clientList.Clear();
@@ -197,36 +193,60 @@ namespace SocketSignalServer
             {
                 button_Start.Text = "ServerStop";
 
-                if (int.TryParse(textBox_portNumber.Text, out int Port))
+                if (int.TryParse(textBox_portNumber.Text, out int port))
                 {
-                    if (socketListeningAndStoreWorker == null) socketListeningAndStoreWorker = new SocketListeningAndStoreWorker(liteDB_Worker, Port);
-                    if (!socketListeningAndStoreWorker.IsBusy) socketListeningAndStoreWorker.Start();
+                    if (socketListeningAndStoreWorker == null)
+                        socketListeningAndStoreWorker = new SocketListeningAndStoreWorker(liteDB_Worker, port);
+
+                    if (!socketListeningAndStoreWorker.IsBusy)
+                        socketListeningAndStoreWorker.Start();
                 }
 
-                if (int.TryParse(textBox_TimeoutCheckInterval.Text, out int TimeoutCheckInterval))
+                if (int.TryParse(textBox_TimeoutCheckInterval.Text, out int interval))
                 {
-                    if (timeoutCheckWorker == null) timeoutCheckWorker = new TimeoutCheckWorker(liteDB_Worker, noticeTransmitter, clientList, textBox_TimeoutMessageParameter.Text);
-                    if (!timeoutCheckWorker.IsBusy) timeoutCheckWorker.Start();
+                    if (timeoutCheckWorker == null)
+                        timeoutCheckWorker = new TimeoutCheckWorker(liteDB_Worker, noticeTransmitter, clientList, textBox_TimeoutMessageParameter.Text);
+
+                    timeoutCheckWorker.Interval = interval * 1000;
+
+                    if (!timeoutCheckWorker.IsBusy)
+                        timeoutCheckWorker.Start();
                 }
 
+                return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " EX:" + ex.ToString());
+                Debug.WriteLine($"WorkersStart Error: {ex}");
                 return false;
             }
-
-            button_Start.Text = "ServerStop";
-            return true;
         }
+
 
         private bool WorkersStop()
         {
-            socketListeningAndStoreWorker.Stop();
-            timeoutCheckWorker.Stop();
+            try
+            {
+                socketListeningAndStoreWorker?.Stop();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"socketListeningAndStoreWorker.Stop Error: {ex}");
+            }
+
+            try
+            {
+                timeoutCheckWorker?.Stop();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"timeoutCheckWorker.Stop Error: {ex}");
+            }
+
             button_Start.Text = "ServerStart";
             return true;
         }
+
 
         private void WorkersAutoStartTry()
         {
@@ -240,37 +260,84 @@ namespace SocketSignalServer
             }
         }
 
-        Task UpdateTask_panel_FailoverSystemView;
+        //Task UpdateTask_panel_FailoverSystemView;
         private void UpdateStart_panel_FailoverSystemView(CancellationToken token)
         {
-            UpdateTask_panel_FailoverSystemView = Task.Run(() =>
+            int intervalSec = int.TryParse(textBox_FailoverActiveListCheckInterval.Text, out int sec) ? sec : 10;
+
+            StartPeriodicTask(async () =>
+            {
+                Update_panel_FailoverSystemView();
+                await Task.CompletedTask;
+            }, TimeSpan.FromSeconds(intervalSec), token);
+        }
+
+
+        private void StartPeriodicTask(Func<Task> action, TimeSpan interval, CancellationToken token)
+        {
+            Task.Run(async () =>
             {
                 while (!token.IsCancellationRequested)
                 {
-                    if (!int.TryParse(textBox_FailoverActiveListCheckInterval.Text, out int checkInterval)) checkInterval = 10;
                     try
                     {
-                        Update_panel_FailoverSystemView();
-                        Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
+                        await action();
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"PeriodicTask Error: {ex}");
+                    }
+
+                    try
+                    {
+                        await Task.Delay(interval, token);
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        break;
+                    }
                 }
             }, token);
         }
 
-        Task UpdateTask_dataGridView_AddressList;
+
+        //Task UpdateTask_dataGridView_AddressList;
         private void UpdateStart_dataGridView_AddressList(CancellationToken token)
         {
-            int checkInterval = 10;
+            StartPeriodicTask(async () =>
+            {
+                Update_AddressList_Info();
+                await Task.CompletedTask;
+            }, TimeSpan.FromSeconds(10), token);
+        }
 
-            UpdateTask_dataGridView_AddressList = Task.Run(() =>
-             {
-                 while (!token.IsCancellationRequested)
-                 {
-                     dataGridView_AddressList_InfoUpdate();
-                     Task.Delay(TimeSpan.FromSeconds(checkInterval), token).Wait();
-                 }
-             }, token);
+        private void Update_AddressList_Info()
+        {
+            if (InvokeRequired)
+            {
+                BeginInvoke((Action)Update_AddressList_Info);
+                return;
+            }
+
+            foreach (DataGridViewRow row in dataGridView_AddressList.Rows)
+            {
+                if (row.IsNewRow) continue;
+
+                string addr = row.Cells[0].Value?.ToString();
+                if (string.IsNullOrEmpty(addr)) continue;
+
+                if (noticeTransmitter.FailLogDictionary.TryGetValue(addr, out var log))
+                {
+                    string newValue = $"TimeOut[{noticeTransmitter.FailCountDictionary[addr]}]: {log.SendNoticeTime:MM/dd HH:mm:ss}";
+                    if (!Equals(row.Cells[2].Value, newValue))
+                        row.Cells[2].Value = newValue;
+                }
+                else
+                {
+                    if (!Equals(row.Cells[2].Value, "--"))
+                        row.Cells[2].Value = "--";
+                }
+            }
         }
 
         public void dataGridView_AddressList_InfoUpdate()
@@ -739,5 +806,39 @@ namespace SocketSignalServer
             ButtonEnable(button_SchedulerList, true);
         }
 
+        private void button_setupSchedulerList_Click(object sender, EventArgs e)
+        {
+            dataGridView_SchedulerList.Rows.Clear();
+
+            dataGridView_SchedulerList.Rows.Add("Notice", "EveryHours", "0,15,30,45");
+            dataGridView_SchedulerList.Rows.Add("Warning", "EverySeconds", "1");
+            dataGridView_SchedulerList.Rows.Add("Error", "EverySeconds", "20");
+            dataGridView_SchedulerList.Rows.Add("TimeOut", "EverySeconds", "30");
+            dataGridView_SchedulerList.Rows.Add("TimeSignal", "EverySeconds", "30");
+        }
+
+        private void dataGridView_AddressList_RowPostPaint(object sender, DataGridViewRowPostPaintEventArgs e)
+        {
+
+            string rowIndex = (e.RowIndex + 1).ToString();
+
+            if (e.RowIndex >= dataGridView_AddressList.Rows.Count - 1) return;
+
+            var headerBounds = new Rectangle(
+                e.RowBounds.Left,
+                e.RowBounds.Top,
+                dataGridView_AddressList.RowHeadersWidth,
+                e.RowBounds.Height);
+
+            TextRenderer.DrawText(
+                e.Graphics,
+                rowIndex,
+                dataGridView_AddressList.Font,
+                headerBounds,
+                dataGridView_AddressList.RowHeadersDefaultCellStyle.ForeColor,
+                TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
+        }
+
     }
 }
+//2026.02.04

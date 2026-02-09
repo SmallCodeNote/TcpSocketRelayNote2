@@ -1,12 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Diagnostics;
+using System.Threading.Tasks;
 
 namespace tcpClient
 {
@@ -14,53 +10,62 @@ namespace tcpClient
     {
         public async Task<string> StartClient(string ipaddress, int port, string request, string encoding = "ASCII")
         {
-            var writeBuffer = new byte[1024];
-            var readBuffer = new byte[1024];
-            var response = "";
+            string response = string.Empty;
+            Encoding enc = encoding == "UTF8" ? Encoding.UTF8 : Encoding.ASCII;
 
             try
             {
                 using (var tcpclient = new TcpClient())
                 {
-                    tcpclient.SendTimeout = 1000;//ms
-                    tcpclient.ReceiveTimeout = 1000;//ms
+                    tcpclient.SendTimeout = 1000;
+                    tcpclient.ReceiveTimeout = 1000;
+                    tcpclient.NoDelay = true;
 
-                    await tcpclient.ConnectAsync(ipaddress, port);
+                    await tcpclient.ConnectAsync(ipaddress, port).ConfigureAwait(false);
                     Debug.WriteLine("Server connected.");
+
                     using (var stream = tcpclient.GetStream())
                     {
-                        if (encoding == "ASCII")
-                        {
-                            writeBuffer = System.Text.Encoding.ASCII.GetBytes(request);
-                            await stream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
-                            Debug.WriteLine($"Send [{request}] to server.");
+                        // --- Send ---
+                        byte[] writeBuffer = enc.GetBytes(request);
+                        await stream.WriteAsync(writeBuffer, 0, writeBuffer.Length).ConfigureAwait(false);
+                        Debug.WriteLine($"Send [{request}] to server.");
 
-                            var length = await stream.ReadAsync(readBuffer, 0, readBuffer.Length);
-                            response = System.Text.Encoding.ASCII.GetString(readBuffer, 0, length);
-                            Debug.WriteLine($"Recieved [{response}] from server.");
+                        // --- Recieve ---
+                        var readBuffer = new byte[4096]; // 4KB
+                        int length = await stream.ReadAsync(readBuffer, 0, readBuffer.Length).ConfigureAwait(false);
+
+                        if (length > 0)
+                        {
+                            response = enc.GetString(readBuffer, 0, length);
+                            Debug.WriteLine($"Received [{response}] from server.");
                         }
-                        else //UTF8
+                        else
                         {
-                            writeBuffer = System.Text.Encoding.UTF8.GetBytes(request);
-                            await stream.WriteAsync(writeBuffer, 0, writeBuffer.Length);
-                            Debug.WriteLine($"Send [{request}] to server.");
-
-                            var length = await stream.ReadAsync(readBuffer, 0, readBuffer.Length);
-                            response = System.Text.Encoding.UTF8.GetString(readBuffer, 0, length);
-                            Debug.WriteLine($"Recieved [{response}] from server.");
+                            response = "NO_RESPONSE";
+                            Debug.WriteLine("Server returned no data.");
                         }
                     }
                 }
             }
+            catch (SocketException ex)
+            {
+                response = $"SOCKET_ERROR: {ex.Message}";
+                Debug.WriteLine(ex.ToString());
+            }
+            catch (TimeoutException ex)
+            {
+                response = $"TIMEOUT: {ex.Message}";
+                Debug.WriteLine(ex.ToString());
+            }
             catch (Exception ex)
             {
+                response = $"ERROR: {ex.Message}";
                 Debug.WriteLine(ex.ToString());
             }
 
             return response;
         }
-
     }
-
-
 }
+//2026.2.4

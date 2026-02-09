@@ -1,12 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Windows.Forms;
-using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace SocketSignalServer
 {
@@ -14,6 +11,7 @@ namespace SocketSignalServer
     {
         private Task worker;
         private CancellationTokenSource tokenSource;
+        private readonly object startStopLock = new object();
 
         private string _outDirPath = "";
         public int IntervalSec = 1;
@@ -23,7 +21,17 @@ namespace SocketSignalServer
             get { return _outDirPath; }
             set
             {
-                if (Directory.Exists(value)) { _outDirPath = value; }
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(value) && Directory.Exists(value))
+                    {
+                        _outDirPath = value;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"{GetType().Name}::outDirPath setter error: {ex}");
+                }
             }
         }
 
@@ -35,60 +43,148 @@ namespace SocketSignalServer
 
         public void Dispose()
         {
-            if (tokenSource != null)
+            try
             {
-                tokenSource.Cancel();
-                tokenSource.Dispose();
+                Stop();
             }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{GetType().Name}::Dispose exception: {ex}");
+            }
+
+            tokenSource?.Dispose();
         }
 
         private void Worker(CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
-                DebugOutFilenameReset(outDirPath);
-                Task.Delay(TimeSpan.FromSeconds(IntervalSec), token).Wait();
+                try
+                {
+                    DebugOutFilenameReset(_outDirPath);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"{GetType().Name}::Worker DebugOutFilenameReset error: {ex}");
+                }
+
+                try
+                {
+                    Task.Delay(IntervalSec * 1000, token).Wait();
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"{GetType().Name}::Worker Delay error: {ex}");
+                }
             }
         }
 
         public void Start(string outDirPath)
         {
-            this.outDirPath = outDirPath;
-
-            if (worker == null || worker.IsCompleted)
+            lock (startStopLock)
             {
+                this.outDirPath = outDirPath;
+
+                if (worker != null && !worker.IsCompleted)
+                    return;
+
+                if (tokenSource.IsCancellationRequested)
+                {
+                    tokenSource.Dispose();
+                    tokenSource = new CancellationTokenSource();
+                }
+
                 var token = tokenSource.Token;
-                worker = Task.Run(() => { try { Worker(token); } catch { } }, token);
+
+                worker = Task.Run(() =>
+                {
+                    try { Worker(token); }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"{GetType().Name}::Start Worker exception: {ex}");
+                    }
+                }, token);
             }
         }
 
         public void Stop()
         {
-            tokenSource.Cancel();
-            Thread.Sleep(100);
-            worker.Wait();
+            lock (startStopLock)
+            {
+                try
+                {
+                    tokenSource.Cancel();
+
+                    if (worker != null)
+                    {
+                        worker.Wait(1000);
+                    }
+                }
+                catch (AggregateException aex)
+                {
+                    foreach (var ex in aex.Flatten().InnerExceptions)
+                    {
+                        Debug.WriteLine($"{GetType().Name}::Stop inner exception: {ex}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"{GetType().Name}::Stop exception: {ex}");
+                }
+            }
         }
 
         private void DebugOutFilenameReset(string targetDir)
         {
             string outFilename = "";
+
             try
             {
-                if (targetDir == "{ExecutablePath}") { targetDir = Path.GetDirectoryName(Application.ExecutablePath); }
-                if (Directory.Exists(targetDir))
-                {
-                    outFilename = Path.Combine(targetDir, DateTime.Now.ToString("yyyy"), DateTime.Now.ToString("yyyyMM"), DateTime.Now.ToString("yyyyMMdd"), DateTime.Now.ToString("yyyyMMdd_HHmm").Substring(0, 12) + "0.txt");
-                    if (!Directory.Exists(Path.GetDirectoryName(outFilename))) { Directory.CreateDirectory(Path.GetDirectoryName(outFilename)); };
+                if (string.IsNullOrWhiteSpace(targetDir))
+                    return;
 
-                    DefaultTraceListener dtl = (DefaultTraceListener)Debug.Listeners["Default"];
-                    if (dtl.LogFileName != outFilename) { dtl.LogFileName = outFilename; };
+                if (targetDir == "{ExecutablePath}")
+                {
+                    targetDir = Path.GetDirectoryName(Application.ExecutablePath);
+                    if (string.IsNullOrEmpty(targetDir))
+                        return;
+                }
+
+                if (!Directory.Exists(targetDir))
+                    return;
+
+                var now = DateTime.Now;
+                string yyyy = now.ToString("yyyy");
+                string yyyyMM = now.ToString("yyyyMM");
+                string yyyyMMdd = now.ToString("yyyyMMdd");
+                string yyyyMMdd_HHmm0 = now.ToString("yyyyMMdd_HHmm0") + ".txt";
+
+                outFilename = Path.Combine(targetDir, yyyy, yyyyMM, yyyyMMdd, yyyyMMdd_HHmm0);
+
+                var dir = Path.GetDirectoryName(outFilename);
+                if (string.IsNullOrEmpty(dir))
+                    return;
+
+                if (!Directory.Exists(dir))
+                {
+                    Directory.CreateDirectory(dir);
+                }
+
+                var dtl = Debug.Listeners["Default"] as DefaultTraceListener;
+                if (dtl != null && dtl.LogFileName != outFilename)
+                {
+                    dtl.LogFileName = outFilename;
                 }
             }
             catch (Exception ex)
             {
-                Debug.Write(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " filename " + outFilename);
-                Debug.WriteLine(ex.ToString());
+                Debug.WriteLine($"{GetType().Name}::DebugOutFilenameReset filename={outFilename} error={ex}");
             }
         }
     }
 }
+//2026.02.05

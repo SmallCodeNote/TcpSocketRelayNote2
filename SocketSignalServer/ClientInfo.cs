@@ -14,27 +14,37 @@ namespace SocketSignalServer
         public DateTime LastAccessTime;
         public DateTime LastTimeoutDetectedTime;
 
-        /// <summary></summary>
-        /// <param name="Line">string clientName + "\t" + bool timeoutCheck + "\t" + int timeoutLength + "\t" + string timeoutMessage</param>
-        /// <param name="addressList"></param>
-        public ClientInfo(string Line, List<MessageDestinationInfo> MessageDestinationsList)
+        /// <summary>
+        /// Line format:
+        ///   clientName \t bool timeoutCheck \t int timeoutLength \t string timeoutMessage
+        /// </summary>
+        public ClientInfo(string Line, List<MessageDestinationInfo> messageDestinationsList)
         {
-            string[] cols = Line.Split('\t');
             try
             {
+                if (string.IsNullOrWhiteSpace(Line))
+                    throw new ArgumentException("Line is empty");
+
+                var cols = Line.Split(new[] { '\t' }, StringSplitOptions.None);
+
+                if (cols.Length < 4)
+                    throw new FormatException("Insufficient columns");
+
                 Name = cols[0];
-                TimeoutCheck = bool.Parse(cols[1]);
-                TimeoutLength = int.Parse(cols[2]);
-                TimeoutMessage = cols[3];
-                this.MessageDestinationsList = MessageDestinationsList;
+                TimeoutCheck = bool.TryParse(cols[1], out var b) ? b : false;
+                TimeoutLength = int.TryParse(cols[2], out var t) ? t : 0;
+                TimeoutMessage = cols[3] ?? "";
+
+                MessageDestinationsList = messageDestinationsList;
             }
             catch
             {
+                // Fail-safe initialization
                 Name = "";
                 TimeoutCheck = false;
                 TimeoutLength = 0;
                 TimeoutMessage = "";
-                this.MessageDestinationsList = null;
+                MessageDestinationsList = null;
             }
 
             LastAccessTime = DateTime.Now;
@@ -44,45 +54,62 @@ namespace SocketSignalServer
 
     public class DestinationsBook
     {
-        private Dictionary<string, MessageDestinationInfo> destinationsDictionary;
+        private readonly Dictionary<string, MessageDestinationInfo> destinationsDictionary;
 
-        /// <summary> </summary>
-        /// <param name="Lines">ex) {"192.168.1.11\tTower1","192.168.1.12\tTower2",...}</param>
-        public DestinationsBook(string[] Lines)
+        /// <summary>
+        /// Lines example:
+        ///   "192.168.1.11\tTower1"
+        ///   "192.168.1.12\tTower2"
+        /// </summary>
+        public DestinationsBook(string[] lines)
         {
             destinationsDictionary = new Dictionary<string, MessageDestinationInfo>();
-            for (int i = 1; i <= Lines.Length; i++)
+
+            if (lines == null)
+                return;
+
+            for (int i = 0; i < lines.Length; i++)
             {
-                destinationsDictionary.Add(i.ToString(), new MessageDestinationInfo(Lines[i - 1]));
+                var key = (i + 1).ToString();
+
+                // Skip invalid or duplicate entries safely
+                if (!destinationsDictionary.ContainsKey(key))
+                {
+                    try
+                    {
+                        destinationsDictionary.Add(key, new MessageDestinationInfo(lines[i]));
+                    }
+                    catch
+                    {
+                        // Skip invalid line
+                    }
+                }
             }
         }
 
-        /// <summary> </summary>
-        /// <param name="keyIndexList">ex) "1,2,3" / "ALL" </param>
-        /// <returns></returns>
+        /// <summary>
+        /// keyIndexList example: "1,2,3" or "ALL"
+        /// </summary>
         public List<MessageDestinationInfo> getDestinations(string keyIndexList)
         {
-            if (keyIndexList == "" || keyIndexList == "ALL")
+            if (string.IsNullOrWhiteSpace(keyIndexList) || keyIndexList == "ALL")
             {
-                List<MessageDestinationInfo> result = new List<MessageDestinationInfo>();
-
-                foreach (var addValue in destinationsDictionary)
-                {
-                    result.Add(addValue.Value);
-                }
-                return result;
+                // Faster than foreach
+                return new List<MessageDestinationInfo>(destinationsDictionary.Values);
             }
-            else
+
+            var result = new List<MessageDestinationInfo>();
+            var keyIndexSet = keyIndexList.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var key in keyIndexSet)
             {
-                string[] keyIndexSet = keyIndexList.Split(',');
-                List<MessageDestinationInfo> result = new List<MessageDestinationInfo>();
-
-                foreach (string key in keyIndexSet)
+                if (destinationsDictionary.TryGetValue(key, out var dest))
                 {
-                    if (destinationsDictionary.ContainsKey(key)) result.Add(destinationsDictionary[key]);
+                    result.Add(dest);
                 }
-                return result;
             }
+
+            return result;
         }
     }
 
@@ -91,13 +118,22 @@ namespace SocketSignalServer
         public string Address;
         public string Name;
 
-        /// <summary> </summary>
-        /// <param name="Line">ex) "192.168.1.11\tTower1"</param>
+        /// <summary>
+        /// Line example: "192.168.1.11\tTower1"
+        /// </summary>
         public MessageDestinationInfo(string Line)
         {
-            string[] cols = Line.Split('\t');
-            Address = cols[0];
-            Name = cols.Length > 1 ? cols[1] : "";
+            try
+            {
+                var cols = Line.Split(new[] { '\t' }, StringSplitOptions.None);
+                Address = cols.Length > 0 ? cols[0] : "";
+                Name = cols.Length > 1 ? cols[1] : "";
+            }
+            catch
+            {
+                Address = "";
+                Name = "";
+            }
         }
 
         public override string ToString()
@@ -106,3 +142,4 @@ namespace SocketSignalServer
         }
     }
 }
+//2026.2.1

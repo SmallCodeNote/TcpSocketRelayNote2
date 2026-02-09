@@ -4,20 +4,15 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
 using System.Net.Http;
 using System.Collections.Concurrent;
 using System.Diagnostics;
-
 using System.Xml;
 
 namespace SocketSignalServer
 {
     public class NoticeTransmitter : IDisposable
     {
-        //===================
-        // Constructor
-        //===================
         public NoticeTransmitter(bool voiceOFF = true, bool isActive = false)
         {
             NoticeQueue = new ConcurrentQueue<NoticeMessage>();
@@ -33,156 +28,195 @@ namespace SocketSignalServer
 
         public void Dispose()
         {
-            if (tokenSource != null)
+            try
             {
-                tokenSource.Cancel();
-                tokenSource.Dispose();
+                Stop();
             }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{GetType().Name}::Dispose exception: {ex}");
+            }
+
+            tokenSource?.Dispose();
         }
 
-        //===================
-        // Member variable
-        //===================
         private Task worker;
         private CancellationTokenSource tokenSource;
 
-        /// <summary> Received Notice Queue. </summary>
         public ConcurrentQueue<NoticeMessage> NoticeQueue;
-
-        /// <summary> Running Notice.</summary>
         public ConcurrentDictionary<string, NoticeMessageHandling> NoticeRunningDictionary;
-
-        /// <summary> FailLog / Address,Time</summary>
         public ConcurrentDictionary<string, NoticeMessage> FailLogDictionary;
-
-        /// <summary> FailLog / Address,FailCount</summary>
         public ConcurrentDictionary<string, int> FailCountDictionary;
 
-        /// <summary> CheckInterval(ms)</summary>
         public int Interval = 200;
-
-        /// <summary> timeout length (sec.) </summary>
         public int HttpTimeout = 3;
-
         public bool voiceOFF = true;
-
-        /// <summary> failover system class  true:Active / false:Standby </summary>
         public bool isActive = false;
 
-        //===================
-        // Member function
-        //===================
+        // -----------------------------
+        // AddNotice
+        // -----------------------------
         public bool AddNotice(NoticeMessage notice)
         {
+            if (notice == null) return false;
+
+            // skip running key
             if (!NoticeRunningDictionary.ContainsKey(notice.Key))
             {
                 NoticeQueue.Enqueue(notice);
                 return true;
-            };
+            }
             return false;
         }
 
         public bool AddNotice(ClientInfo targetClient, SocketMessage socketMessage)
         {
+            if (targetClient == null || socketMessage == null) return false;
+
             bool result = true;
-            foreach (var messageDestination in targetClient.MessageDestinationsList)
+
+            foreach (var dest in targetClient.MessageDestinationsList)
             {
-                NoticeMessage item = new NoticeMessage(messageDestination.Address, socketMessage);
+                if (dest == null) continue;
+
+                var item = new NoticeMessage(dest.Address, socketMessage);
                 result = result && AddNotice(item);
             }
+
             return result;
         }
 
+        // -----------------------------
+        // Start / Stop
+        // -----------------------------
         public void Start()
         {
             if (worker == null || worker.IsCompleted)
             {
                 var token = tokenSource.Token;
-                worker = Task.Run(() => { try { Worker(token); } catch { } }, token);
+                worker = Task.Run(() =>
+                {
+                    try { Worker(token); }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"{GetType().Name}::Worker fatal exception: {ex}");
+                    }
+                }, token);
             }
         }
 
         public void Stop()
         {
-            tokenSource.Cancel();
-            Thread.Sleep(100);
-            worker.Wait();
+            try
+            {
+                tokenSource.Cancel();
+                if (worker != null)
+                {
+                    worker.Wait(2000);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{GetType().Name}::Stop exception: {ex}");
+            }
         }
 
-        /// <summary>
-        /// NoticeCheck
-        /// </summary>
+        // -----------------------------
+        // Worker
+        // -----------------------------
         public void Worker(CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    if (NoticeRunningDictionary.Count > 0)
+                    // ---- Running Notice check ----
+                    if (!NoticeRunningDictionary.IsEmpty)
                     {
-                        foreach (var item in NoticeRunningDictionary)
+                        foreach (var kv in NoticeRunningDictionary.ToArray())
                         {
-                            if (item.Value.FinishNotice)
+                            var handling = kv.Value;
+
+                            if (handling.FinishNotice)
                             {
                                 int failCount = 0;
 
-                                if (FailLogDictionary.ContainsKey(item.Value.Address))
+                                // FailLog update
+                                if (handling.isTimeout)
                                 {
-                                    FailLogDictionary.TryRemove(item.Value.Address, out NoticeMessage b);
-                                    FailCountDictionary.TryRemove(item.Value.Address, out failCount);
+                                    FailLogDictionary[kv.Key] = handling.Notice;
+                                    FailCountDictionary.AddOrUpdate(kv.Key, 1, (k, v) => v + 1);
+                                }
+                                else
+                                {
+                                    FailLogDictionary.TryRemove(kv.Key, out _);
+                                    FailCountDictionary.TryRemove(kv.Key, out failCount);
                                 }
 
-                                if (item.Value.isTimeout) {
-
-                                    FailLogDictionary.TryAdd(item.Value.Address,item.Value.Notice);
-                                    FailCountDictionary.TryAdd(item.Value.Address, failCount+1);
-                                }
-
-                               NoticeMessageHandling h;
-                                if (NoticeRunningDictionary.TryRemove(item.Key, out h)) { h.Dispose(); };
+                                // Remove from running
+                                NoticeRunningDictionary.TryRemove(kv.Key, out var removed);
+                                removed?.Dispose();
                             }
                         }
                     }
 
-                    while (NoticeQueue.Count > 0)
+                    // ---- NoticeQueue process ----
+                    NoticeMessage msg;
+                    while (NoticeQueue.TryDequeue(out msg))
                     {
-                        if (NoticeQueue.TryDequeue(out NoticeMessage b))
-                        {
-                            NoticeMessageHandling handling = new NoticeMessageHandling(b, voiceOFF, isActive, HttpTimeout);
+                        var handling = new NoticeMessageHandling(msg, voiceOFF, isActive, HttpTimeout);
 
-                            if (NoticeRunningDictionary.TryAdd(b.Key, handling))
-                            {
-                                handling.StartNotice(token);
-                            }
+                        if (NoticeRunningDictionary.TryAdd(msg.Key, handling))
+                        {
+                            handling.StartNotice(token);
+                        }
+                        else
+                        {
+                            handling.Dispose();
                         }
                     }
 
-                    Task.Delay(TimeSpan.FromMilliseconds(Interval), token).Wait();
+                    // ---- Interval ----
+                    Task.Delay(Interval, token).GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
-                    Debug.Write(DateTime.Now.ToString("HH:mm:ss") + " " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " ");
-                    Debug.WriteLine(ex.ToString());
+                    Debug.WriteLine($"{GetType().Name}::Worker exception: {ex}");
                 }
             }
-
-            token.ThrowIfCancellationRequested();
         }
     }
 
+    // ============================================================
+    // NoticeMessageHandling
+    // ============================================================
     public class NoticeMessageHandling : IDisposable
     {
-        //===================
-        // Constructor
-        //===================
+        private readonly NoticeMessage notice;
+        private readonly HttpClient httpClient;
+
+        public bool isTimeout = false;
+        public bool voiceOFF = true;
+        public bool isActive = false;
+
+        public int NoticeWorkerTimeout = 60;
+        public int WaitSpeechFinishCheckStart = 10;
+        private int threadSleepLength = 1000;
+
+        public List<Task> Tasks;
+
         public NoticeMessageHandling(NoticeMessage notice, bool voiceOFF, bool isActive, int httpTimeout = 3)
         {
             this.notice = notice;
-            httpClient = new HttpClient();
-            httpClient.Timeout = new TimeSpan(0, 0, httpTimeout);
-
             this.voiceOFF = voiceOFF;
             this.isActive = isActive;
+
+            httpClient = new HttpClient();
+            httpClient.Timeout = TimeSpan.FromSeconds(httpTimeout);
 
             Tasks = new List<Task>();
         }
@@ -190,144 +224,138 @@ namespace SocketSignalServer
         public void Dispose()
         {
             httpClient.Dispose();
-            GC.SuppressFinalize(this);
         }
-
-        //===================
-        // Member variable
-        //===================
-        private NoticeMessage notice;
-        private HttpClient httpClient;
 
         public bool FinishNotice
         {
             get
             {
-                if (Tasks.Count == 0 || Tasks.Exists(task => !task.IsCompleted)) { return false; }
-                else { return true; }
+                return Tasks.Count > 0 && Tasks.TrueForAll(t => t.IsCompleted);
             }
         }
-        public bool isTimeout = false;
-        public NoticeMessage Notice { get { return notice; } }
-        public string Address { get { return notice.Address; } }
 
-        /// <summary>[Seconds]</summary>
-        public int NoticeWorkerTimeout = 60;
-        /// <summary>[Seconds]</summary>
-        public int WaitSpeechFinishCheckStart = 10;
+        public NoticeMessage Notice => notice;
+        public string Address => notice.Address;
 
-        public bool voiceOFF = true;
-
-        /// <summary>[Milliseconds]</summary>
-        private int threadSleepLength = 1000;
-
-        /// <summary> failover system class  true:Active / false:Standby </summary>
-        public bool isActive = false;
-
-        /// <summary> Http Timeout(sec.) </summary>
-        public int HttpTimeout
-        {
-            get { return (int)httpClient.Timeout.TotalSeconds; }
-            set { httpClient.Timeout = new TimeSpan(0, 0, value); }
-        }
-
-        public List<Task> Tasks;
-
-        //===================
-        // Member function
-        //===================
-
-        /// <summary>
-        /// WaitNoticeFinishTask
-        /// </summary>
-        /// <returns></returns>
+        // -----------------------------
+        // StartNotice
+        // -----------------------------
         public void StartNotice(CancellationToken token)
         {
             Tasks.Add(Task.Run(() =>
             {
                 notice.SendNoticeTime = DateTime.Now;
-                if (!WaitNoticeFinish(token, 0)) {
+
+                if (!WaitNoticeFinish(token, 0))
                     return;
-                }
+
                 SendNotice();
+
                 WaitNoticeFinish(token, WaitSpeechFinishCheckStart);
-            },token));
+
+            }, token));
         }
 
-        /// <summary> SendNoticeCommand </summary>
-        /// <returns></returns>
+        // -----------------------------
+        // SendNotice
+        // -----------------------------
         private string SendNotice()
         {
-            string speech = (notice.Message != null && notice.Message.Length > 0) ? "speech=" + notice.Message : "";
-            string parameter = (notice.Parameter != null && notice.Parameter.Length > 0) ? notice.Parameter : "";
+            if (voiceOFF || !isActive)
+                return "";
+
+            string speech = string.IsNullOrEmpty(notice.Message) ? "" : "speech=" + notice.Message;
+            string parameter = string.IsNullOrEmpty(notice.Parameter) ? "" : notice.Parameter;
             string separator = (speech.Length > 0 && parameter.Length > 0) ? "&" : "";
 
-            if (speech.Length == 0 && parameter.Length == 0) { return ""; }
-            if (voiceOFF || !isActive) { return ""; }
+            if (speech.Length == 0 && parameter.Length == 0)
+                return "";
 
-            string url = @"http://" + notice.Address + @"/api/control?" + parameter + separator + speech;
+            string url = $"http://{notice.Address}/api/control?{parameter}{separator}{speech}";
 
             try
             {
-                string pageBody = httpClient.GetStringAsync(url).Result; Debug.Write(DateTime.Now.ToString("HH:mm:ss") + " " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " pageBody = " + pageBody.Replace("\r\n", " "));
-                return pageBody;
+                return httpClient.GetStringAsync(url).Result;
             }
             catch (Exception ex)
             {
-                Debug.Write(DateTime.Now.ToString("HH:mm:ss") + " " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " httpClient.GetStringAsync(url).Result Error");
-                Debug.WriteLine(ex.ToString());
+                Debug.WriteLine($"{GetType().Name}::SendNotice error: {ex}");
+                return "";
             }
-            return "";
         }
 
-        private bool WaitNoticeFinish(CancellationToken token, int WaitAskStart)
+        // -----------------------------
+        // WaitNoticeFinish
+        // -----------------------------
+        private bool WaitNoticeFinish(CancellationToken token, int waitStart)
         {
-            if (WaitAskStart > 0) Task.Delay(TimeSpan.FromSeconds(WaitAskStart), token).Wait();
-            if (voiceOFF || !isActive) return true; //"voiceOFF WaitStop "
-            if (token.IsCancellationRequested) return false;
-
-            string url = @"http://" + notice.Address + @"/api/status?format=xml";
-
-            bool waitContinue = true;
-            DateTime startTime = DateTime.Now;
-
-            do
+            try
             {
-                if (token.IsCancellationRequested) { return false; }
-                else
-                {
-                    try
-                    {
-                        XmlDocument doc = new XmlDocument();
-                        string pageBody = httpClient.GetStringAsync(url).Result;
-                        doc.LoadXml(pageBody);
+                if (waitStart > 0)
+                    Task.Delay(TimeSpan.FromSeconds(waitStart), token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
 
-                        XmlNode soundNode = doc.SelectSingleNode("//sound[@name='SOUND']");
-                        string soundValue = soundNode.Attributes["value"].Value;
-                        waitContinue = soundValue != "0";
-                    }
-                    catch (Exception ex)
+            if (voiceOFF || !isActive)
+                return true;
+
+            string url = $"http://{notice.Address}/api/status?format=xml";
+            DateTime start = DateTime.Now;
+
+            while (true)
+            {
+                if (token.IsCancellationRequested)
+                    return false;
+
+                try
+                {
+                    string xml = httpClient.GetStringAsync(url).Result;
+
+                    var doc = new XmlDocument();
+                    doc.LoadXml(xml);
+
+                    var soundNode = doc.SelectSingleNode("//sound[@name='SOUND']");
+                    if (soundNode != null)
                     {
-                        Debug.WriteLine("WaitEnd_ERROR " + DateTime.Now.ToString("HH:mm:ss") + " " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + "]]" + ex.ToString());
-                        Task.Delay(httpClient.Timeout, token).Wait();
+                        string value = soundNode.Attributes["value"].Value;
+                        if (value == "0")
+                            return true;
                     }
                 }
-
-                if ((DateTime.Now - startTime).TotalSeconds > NoticeWorkerTimeout)
+                catch (Exception ex)
                 {
-                    Debug.WriteLine("WaitEnd_TimeOut " + DateTime.Now.ToString("HH:mm:ss") + " " + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + "]]");
+                    Debug.WriteLine($"{GetType().Name}::WaitNoticeFinish error: {ex}");
+                    SafeDelay(token, httpClient.Timeout);
+                }
+
+                if ((DateTime.Now - start).TotalSeconds > NoticeWorkerTimeout)
+                {
                     isTimeout = true;
                     return false;
                 }
 
-                Task.Delay(TimeSpan.FromMilliseconds(threadSleepLength), token).Wait();
+                SafeDelay(token, TimeSpan.FromMilliseconds(threadSleepLength));
+            }
+        }
 
-            } while (waitContinue);
-
-            return true;
+        private void SafeDelay(CancellationToken token, TimeSpan span)
+        {
+            try
+            {
+                Task.Delay(span, token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+            }
         }
     }
 
+    // ============================================================
+    // NoticeMessage
+    // ============================================================
     public class NoticeMessage
     {
         public string Address;
@@ -336,34 +364,16 @@ namespace SocketSignalServer
         public DateTime KeyTime;
         public DateTime SendNoticeTime;
 
-        public string Key
-        {
-            get { return this.Address + "_" + KeyTime.ToString("yyyy/MM/dd HH:mm:ss.fff") + "_" + Message; }
-        }
+        public string Key => $"{Address}_{KeyTime:yyyy/MM/dd HH:mm:ss.fff}_{Message}";
 
-        //===================
-        // Member function
-        //===================
         public NoticeMessage(string address, SocketMessage socket)
         {
-            this.Address = address;
-            this.Message = socket.message;
-            this.Parameter = socket.parameter;
-            this.KeyTime = socket.connectTime;
-            this.SendNoticeTime = socket.connectTime;
+            Address = address;
+            Message = socket.message;
+            Parameter = socket.parameter;
+            KeyTime = socket.connectTime;
+            SendNoticeTime = socket.connectTime;
         }
-
-        public static bool operator ==(NoticeMessage c1, NoticeMessage c2)
-        {
-            return c1.Key == c2.Key;
-        }
-
-        public static bool operator !=(NoticeMessage c1, NoticeMessage c2)
-        {
-            return c1.Key != c2.Key;
-
-        }
-
     }
-
 }
+//2026.2.1

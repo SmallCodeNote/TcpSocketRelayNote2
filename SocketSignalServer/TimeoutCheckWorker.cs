@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.IO;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -11,35 +10,14 @@ namespace SocketSignalServer
 {
     public class TimeoutCheckWorker : IDisposable
     {
-        public TimeoutCheckWorker(LiteDB_Worker liteDB_Worker, NoticeTransmitter noticeTransmitter, List<ClientInfo> clientList, string TimeoutMessageParameter)
-        {
-            this.liteDB_Worker = liteDB_Worker;
-            this.noticeTransmitter = noticeTransmitter;
-
-            this.clientList = clientList;
-            this.TimeoutMessageParameter = TimeoutMessageParameter;
-            tokenSource = new CancellationTokenSource();
-        }
-
-        public void Dispose()
-        {
-            if (tokenSource != null)
-            {
-                tokenSource.Cancel();
-                Thread.Sleep(100);
-                if (worker != null) worker.Wait();
-                tokenSource.Dispose();
-            }
-        }
-
-        LiteDB_Worker liteDB_Worker;
-        List<ClientInfo> clientList;
-        NoticeTransmitter noticeTransmitter;
+        private readonly LiteDB_Worker liteDB_Worker;
+        private readonly List<ClientInfo> clientList;
+        private readonly NoticeTransmitter noticeTransmitter;
 
         private Task worker;
         private CancellationTokenSource tokenSource;
 
-        public bool IsBusy = false;
+        public bool IsBusy { get; private set; }
         public int Interval = 10000;
         public string TimeoutMessageParameter = "";
 
@@ -49,88 +27,210 @@ namespace SocketSignalServer
             get { return _dbFilename; }
             set
             {
-                if (Directory.Exists(value)) { _dbFilename = value; }
+                if (Directory.Exists(value))
+                {
+                    _dbFilename = value;
+                }
             }
         }
 
+        public TimeoutCheckWorker(
+            LiteDB_Worker liteDB_Worker,
+            NoticeTransmitter noticeTransmitter,
+            List<ClientInfo> clientList,
+            string TimeoutMessageParameter)
+        {
+            this.liteDB_Worker = liteDB_Worker;
+            this.noticeTransmitter = noticeTransmitter;
+            this.clientList = clientList;
+            this.TimeoutMessageParameter = TimeoutMessageParameter;
+
+            tokenSource = new CancellationTokenSource();
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                Stop();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{GetType().Name}::Dispose exception: {ex}");
+            }
+
+            tokenSource?.Dispose();
+        }
+
+        // -----------------------------
+        // Worker
+        // -----------------------------
         private void Worker(CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    if (true)
+                    // skip null file
+                    if (liteDB_Worker == null)
                     {
-                        SocketMessage[] dataset0, dataset1;
+                        SafeDelay(token);
+                        continue;
+                    }
 
-                        var col = liteDB_Worker.LoadData();
+                    var col = liteDB_Worker.LoadData();
+                    if (col == null || col.Count == 0)
+                    {
+                        SafeDelay(token);
+                        continue;
+                    }
 
-                        dataset0 = col
-                                .Where(x => x.status != "Timeout")
-                                .OrderByDescending(x => x.connectTime).ToArray();
-                        dataset1 = col
-                                .Where(x => x.status == "Timeout" && !x.check)
-                                .OrderByDescending(x => x.connectTime).ToArray();
+                    var ordered = col.OrderByDescending(x => x.connectTime).ToArray();
 
-                        foreach (var clientTarget in clientList)
+                    var dataset0 = ordered.Where(x => x.status != "Timeout").ToArray();
+                    var dataset1 = ordered.Where(x => x.status == "Timeout" && !x.check).ToArray();
+
+
+                    var latestMap = dataset0
+                        .GroupBy(x => x.clientName)
+                        .ToDictionary(g => g.Key, g => g.First());
+
+
+                    var timeoutMap = dataset1
+                        .GroupBy(x => x.clientName)
+                        .ToDictionary(g => g.Key, g => g.ToList());
+
+                    foreach (var clientTarget in clientList)
+                    {
+                        if (clientTarget == null) continue;
+
+                        // first access
+                        if (clientTarget.LastAccessTime == null)
                         {
-                            //MessageRecord from Client
-                            var latestRecord = dataset0.Where(x => x.clientName == clientTarget.Name).FirstOrDefault();
+                            clientTarget.LastAccessTime = DateTime.Now;
+                        }
 
-                            //MessageRecord Timeout
-                            var listedTimeoutMessage = dataset1.Where(x => x.clientName == clientTarget.Name).OrderByDescending(x => x.connectTime).ToList();
-                            if (clientTarget.LastAccessTime == null) { clientTarget.LastAccessTime = DateTime.Now; };//First Time
-
-                            //Acccess Time Update
-                            if (latestRecord != null && clientTarget.LastAccessTime < latestRecord.connectTime)
+                        // update access
+                        SocketMessage latestRecord;
+                        if (latestMap.TryGetValue(clientTarget.Name, out latestRecord))
+                        {
+                            if (clientTarget.LastAccessTime < latestRecord.connectTime)
                             {
                                 clientTarget.LastAccessTime = latestRecord.connectTime;
-                            };
-
-                            bool flag1 = (DateTime.Now - clientTarget.LastAccessTime).TotalSeconds > clientTarget.TimeoutLength;
-                            bool flag2 = listedTimeoutMessage.Count == 0;
-
-                            if (clientTarget.TimeoutCheck && flag1 && flag2)
-                            {
-                                SocketMessage timeoutMessage = new SocketMessage(clientTarget.LastAccessTime, clientTarget.Name, "Timeout", clientTarget.TimeoutMessage, "", "Once");
-                                timeoutMessage.parameter = TimeoutMessageParameter;
-                                noticeTransmitter.AddNotice(clientTarget, timeoutMessage);
-                                clientTarget.LastTimeoutDetectedTime = DateTime.Now;
-
-                                liteDB_Worker.SaveData(timeoutMessage);
-                                Debug.WriteLine("Timeout\t" + GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + timeoutMessage.ToString());
                             }
                         }
+
+                        // collect new Timeout message
+                        List<SocketMessage> timeoutList;
+                        bool hasTimeoutMessage = timeoutMap.TryGetValue(clientTarget.Name, out timeoutList)
+                                                 && timeoutList.Count > 0;
+
+                        bool isTimeout = (DateTime.Now - clientTarget.LastAccessTime).TotalSeconds
+                                         > clientTarget.TimeoutLength;
+
+                        if (clientTarget.TimeoutCheck && isTimeout && !hasTimeoutMessage)
+                        {
+                            var timeoutMessage = new SocketMessage(
+                                clientTarget.LastAccessTime,
+                                clientTarget.Name,
+                                "Timeout",
+                                clientTarget.TimeoutMessage,
+                                "",
+                                "Once");
+
+                            timeoutMessage.parameter = TimeoutMessageParameter;
+
+                            try
+                            {
+                                noticeTransmitter?.AddNotice(clientTarget, timeoutMessage);
+                            }
+                            catch (Exception exNotice)
+                            {
+                                Debug.WriteLine($"{GetType().Name}::Notice exception: {exNotice}");
+                            }
+
+                            clientTarget.LastTimeoutDetectedTime = DateTime.Now;
+
+                            try
+                            {
+                                liteDB_Worker.SaveData(timeoutMessage);
+                            }
+                            catch (Exception exSave)
+                            {
+                                Debug.WriteLine($"{GetType().Name}::SaveData exception: {exSave}");
+                            }
+
+                            Debug.WriteLine($"Timeout\t{GetType().Name}::{nameof(Worker)} {timeoutMessage}");
+                        }
                     }
-                    Task.Delay(TimeSpan.FromMilliseconds(Interval), token).Wait();
+
+                    SafeDelay(token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
-                    Debug.WriteLine(GetType().Name + "::" + System.Reflection.MethodBase.GetCurrentMethod().Name + " " + ex.ToString());
+                    Debug.WriteLine($"{GetType().Name}::{nameof(Worker)} exception: {ex}");
+                    SafeDelay(token);
                 }
             }
-            token.ThrowIfCancellationRequested();
         }
 
+        private void SafeDelay(CancellationToken token)
+        {
+            try
+            {
+                Task.Delay(Interval, token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                
+            }
+        }
+
+        // -----------------------------
+        // Start / Stop
+        // -----------------------------
         public bool Start()
         {
-            if (worker == null)
+            if (worker != null && !worker.IsCompleted)
             {
-                var token = tokenSource.Token;
-                worker = Task.Run(() => Worker(token), token);
-                IsBusy = true;
-                return true;
+                return false;
             }
 
-            return false;
+            var token = tokenSource.Token;
+            worker = Task.Run(() => Worker(token), token);
+            IsBusy = true;
+            return true;
         }
 
-        public async void Stop()
+        public void Stop()
         {
-            tokenSource.Cancel();
-            await worker;
-            IsBusy = false;
-        }
+            if (worker == null) return;
 
+            try
+            {
+                tokenSource.Cancel();
+                worker.Wait(2000);
+            }
+            catch (AggregateException aex)
+            {
+                foreach (var ex in aex.Flatten().InnerExceptions)
+                {
+                    Debug.WriteLine($"{GetType().Name}::Stop inner exception: {ex}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"{GetType().Name}::Stop exception: {ex}");
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
     }
 }
+//2026.02.05
