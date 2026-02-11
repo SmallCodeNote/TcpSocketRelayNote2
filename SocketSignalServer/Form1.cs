@@ -135,7 +135,7 @@ namespace SocketSignalServer
                 noticeTransmitter.HttpTimeout = httpTimeout;
             }
         }
-
+        
         private void ClientListInitialize()
         {
             clientList.Clear();
@@ -165,7 +165,7 @@ namespace SocketSignalServer
             }
             ButtonEnable(button_ClientListLoad, false);
         }
-
+        
         private void SchedulerInitialize()
         {
             JobManager.StopAndBlock();
@@ -750,17 +750,6 @@ namespace SocketSignalServer
             SchedulerInitialize();
         }
 
-        private void label_IntervalSelector_Click(object sender, EventArgs e)
-        {
-            string clip = Clipboard.GetText();
-
-            if (clip == "EveryDays") { Clipboard.SetText("EveryHours"); }
-            else if (clip == "EveryHours") { Clipboard.SetText("EverySeconds"); }
-            else { Clipboard.SetText("EveryDays"); }
-
-            label_IntervalSelectorNow.Text = Clipboard.GetText();
-        }
-
         private void tabControl_FailoverSystemView_SelectedIndexChanged(object sender, EventArgs e)
         {
             if (tabControl_FailoverSystemView.SelectedTab == tabPage_FailoverSystemText)
@@ -839,5 +828,13 @@ namespace SocketSignalServer
                 TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter);
         }
 
+        private void button_getDataBaseFilePath_Click(object sender, EventArgs e)
+        {
+            SaveFileDialog sfd = new SaveFileDialog();
+            sfd.Filter = "*.db";
+            if (sfd.ShowDialog() != DialogResult.OK) return;
+
+            textBox_DataBaseFilePath.Text = sfd.FileName;
+        }
     }
 }
